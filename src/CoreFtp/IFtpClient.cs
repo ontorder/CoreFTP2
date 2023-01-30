@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Threading;
@@ -48,6 +49,8 @@ namespace CoreFtp
         Task<ReadOnlyCollection<FtpNodeInformation>> ListDirectoriesAsync();
 
         Task<ReadOnlyCollection<FtpNodeInformation>> ListFilesAsync(DirSort? sortBy);
+
+        IAsyncEnumerable<FtpNodeInformation> ListFilesAsyncEnum(DirSort? sortBy);
 
         Task RenameAsync(string from, string to);
 
