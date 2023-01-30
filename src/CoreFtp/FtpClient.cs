@@ -1,21 +1,21 @@
-﻿namespace CoreFtp
-{
-    using System;
-    using System.Collections.Generic;
-    using System.Collections.ObjectModel;
-    using System.IO;
-    using System.Linq;
-    using System.Text;
-    using System.Threading;
-    using System.Threading.Tasks;
-    using Components.DirectoryListing;
-    using Components.DnsResolution;
-    using Enum;
-    using Infrastructure;
-    using Infrastructure.Extensions;
-    using Infrastructure.Stream;
-    using Microsoft.Extensions.Logging;
+﻿using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using CoreFtp.Components.DirectoryListing;
+using CoreFtp.Components.DnsResolution;
+using CoreFtp.Enum;
+using CoreFtp.Infrastructure;
+using CoreFtp.Infrastructure.Extensions;
+using CoreFtp.Infrastructure.Stream;
+using Microsoft.Extensions.Logging;
 
+namespace CoreFtp
+{
     public class FtpClient : IFtpClient
     {
         private IDirectoryProvider directoryProvider;
@@ -325,7 +325,7 @@
         }
 
         /// <summary>
-        /// Closes the write stream and associated socket (if open), 
+        /// Closes the write stream and associated socket (if open),
         /// </summary>
         /// <param name="ctsToken"></param>
         /// <returns></returns>
@@ -360,13 +360,13 @@
         /// Lists all files in the current working directory
         /// </summary>
         /// <returns></returns>
-        public async Task<ReadOnlyCollection<FtpNodeInformation>> ListFilesAsync()
+        public async Task<ReadOnlyCollection<FtpNodeInformation>> ListFilesAsync(DirSort? sortBy)
         {
             try
             {
                 EnsureLoggedIn();
                 Logger?.LogDebug( $"[FtpClient] Listing files in {WorkingDirectory}" );
-                return await directoryProvider.ListFilesAsync();
+                return await directoryProvider.ListFilesAsync(sortBy);
             }
             finally
             {
@@ -642,7 +642,7 @@
             {
                 // If the server supports UTF8 it should already be enabled and this
                 // command should not matter however there are conflicting drafts
-                // about this so we'll just execute it to be safe. 
+                // about this so we'll just execute it to be safe.
                 await ControlStream.SendCommandAsync( "OPTS UTF8 ON" );
             }
         }

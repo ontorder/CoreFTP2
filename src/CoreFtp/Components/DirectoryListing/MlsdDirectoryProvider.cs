@@ -1,13 +1,13 @@
-﻿namespace CoreFtp.Components.DirectoryListing
-{
-    using System.Collections.ObjectModel;
-    using System.Threading.Tasks;
-    using Enum;
-    using Infrastructure;
-    using System.Linq;
-    using Infrastructure.Extensions;
-    using Microsoft.Extensions.Logging;
+﻿using CoreFtp.Enum;
+using CoreFtp.Infrastructure;
+using CoreFtp.Infrastructure.Extensions;
+using Microsoft.Extensions.Logging;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
 
+namespace CoreFtp.Components.DirectoryListing
+{
     internal class MlsdDirectoryProvider : DirectoryProviderBase
     {
         public MlsdDirectoryProvider( FtpClient ftpClient, ILogger logger, FtpClientConfiguration configuration )
@@ -36,7 +36,7 @@
             }
         }
 
-        public override async Task<ReadOnlyCollection<FtpNodeInformation>> ListFilesAsync()
+        public override async Task<ReadOnlyCollection<FtpNodeInformation>> ListFilesAsync(DirSort? sortBy = null)
         {
             try
             {

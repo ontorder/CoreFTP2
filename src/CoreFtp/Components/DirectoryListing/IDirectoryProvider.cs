@@ -16,7 +16,7 @@
         /// Lists all files in the current working directory
         /// </summary>
         /// <returns></returns>
-        Task<ReadOnlyCollection<FtpNodeInformation>> ListFilesAsync();
+        Task<ReadOnlyCollection<FtpNodeInformation>> ListFilesAsync(Enum.DirSort? sortBy = null);
 
         /// <summary>
         /// Lists directories beneath the current working directory
