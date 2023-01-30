@@ -252,7 +252,7 @@ namespace CoreFtp
         /// Lists all files in the current working directory
         /// </summary>
         /// <returns></returns>
-        public async Task<ReadOnlyCollection<FtpNodeInformation>> ListFilesAsync(DirSort? sortBy)
+        public async Task<ReadOnlyCollection<FtpNodeInformation>> ListFilesAsync(DirSort? sortBy = null)
         {
             try
             {
@@ -266,7 +266,7 @@ namespace CoreFtp
             }
         }
 
-        public async IAsyncEnumerable<FtpNodeInformation> ListFilesAsyncEnum(DirSort? sortBy)
+        public async IAsyncEnumerable<FtpNodeInformation> ListFilesAsyncEnum(DirSort? sortBy = null)
         {
             try
             {
