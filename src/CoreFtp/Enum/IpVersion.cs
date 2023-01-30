@@ -1,7 +1,7 @@
-﻿namespace CoreFtp.Enum
-{
-    using System;
+﻿    using System;
 
+namespace CoreFtp.Enum
+{
     [ Flags ]
     public enum IpVersion
     {

@@ -1,13 +1,13 @@
-﻿namespace CoreFtp.Components.DirectoryListing.Parser
-{
-    using System.Globalization;
-    using System.Text.RegularExpressions;
-    using Enum;
-    using Infrastructure;
-    using Infrastructure.Extensions;
-    using Microsoft.Extensions.Logging;
+﻿using CoreFtp.Enum;
+using CoreFtp.Infrastructure;
+using CoreFtp.Infrastructure.Extensions;
+using Microsoft.Extensions.Logging;
+using System.Globalization;
+using System.Text.RegularExpressions;
 
-    public class DosDirectoryParser : IListDirectoryParser
+namespace CoreFtp.Components.DirectoryListing.Parser
+{
+    public sealed class DosDirectoryParser : IListDirectoryParser
     {
         private readonly Regex dosDirectoryRegex = new Regex( @"(?<modify>\d+-\d+-\d+\s+\d+:\d+\w+)\s+<DIR>\s+(?<name>.*)$", RegexOptions.Compiled );
         private readonly Regex dosFileRegex = new Regex( @"(?<modify>\d+-\d+-\d+\s+\d+:\d+\w+)\s+(?<size>\d+)\s+(?<name>.*)$", RegexOptions.Compiled );

@@ -1,16 +1,15 @@
-﻿using System.Collections.Generic;
+﻿using CoreFtp.Enum;
+using CoreFtp.Infrastructure;
+using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Text.RegularExpressions;
 
 namespace CoreFtp.Components.DirectoryListing.Parser
 {
-    using System;
-    using System.Globalization;
-    using System.IO;
-    using System.Text.RegularExpressions;
-    using Enum;
-    using Infrastructure;
-    using Microsoft.Extensions.Logging;
-
-    public class UnixDirectoryParser : IListDirectoryParser
+    public sealed class UnixDirectoryParser : IListDirectoryParser
     {
         private readonly List<Regex> unixRegexList = new List<Regex>()
         {

@@ -4,7 +4,7 @@
     <Description>A simple .NET FTP library written entirely in C#, with no external dependencies</Description>
     <Copyright>Nick Briscoe 2016</Copyright>
     <AssemblyTitle>CoreFTP</AssemblyTitle>
-    <VersionPrefix>1.5.1</VersionPrefix>
+    <VersionPrefix>1.5.2</VersionPrefix>
     <Authors>Nick Briscoe</Authors>
     <TargetFrameworks>netstandard2.1</TargetFrameworks>
     <AssemblyName>CoreFtp</AssemblyName>
@@ -15,7 +15,7 @@
     <GenerateAssemblyCompanyAttribute>false</GenerateAssemblyCompanyAttribute>
     <GenerateAssemblyProductAttribute>false</GenerateAssemblyProductAttribute>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
-    <Version>1.5.1</Version>
+    <Version>1.5.2</Version>
   </PropertyGroup>
 
   <ItemGroup>

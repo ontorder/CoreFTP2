@@ -16,7 +16,7 @@ using Microsoft.Extensions.Logging;
 
 namespace CoreFtp
 {
-    public class FtpClient : IFtpClient
+    public sealed class FtpClient : IFtpClient
     {
         private IDirectoryProvider directoryProvider;
         private ILogger logger;

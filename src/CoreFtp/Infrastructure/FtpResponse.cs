@@ -2,7 +2,7 @@
 {
     using Enum;
 
-    public class FtpResponse
+    public sealed class FtpResponse
     {
         public FtpStatusCode FtpStatusCode { get; set; }
 
@@ -10,7 +10,7 @@
         {
             get
             {
-                int statusCode = (int) FtpStatusCode;
+                int statusCode = (int)FtpStatusCode;
                 return statusCode >= 100 && statusCode < 400;
             }
         }

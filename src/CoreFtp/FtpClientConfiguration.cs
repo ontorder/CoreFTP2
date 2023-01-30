@@ -1,11 +1,11 @@
-﻿namespace CoreFtp
-{
-    using System.Security.Authentication;
-    using System.Security.Cryptography.X509Certificates;
-    using Enum;
-    using Infrastructure;
+﻿using CoreFtp.Enum;
+using CoreFtp.Infrastructure;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
 
-    public class FtpClientConfiguration
+namespace CoreFtp
+{
+    public sealed class FtpClientConfiguration
     {
         public int TimeoutSeconds { get; set; } = 120;
         public int? DisconnectTimeoutMilliseconds { get; set; } = 100;

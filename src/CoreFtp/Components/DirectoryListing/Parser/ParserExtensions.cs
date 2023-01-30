@@ -1,8 +1,8 @@
-﻿namespace CoreFtp.Components.DirectoryListing.Parser
-{
-    using System;
-    using System.Globalization;
+﻿using System;
+using System.Globalization;
 
+namespace CoreFtp.Components.DirectoryListing.Parser
+{
     public static class ParserExtensions
     {
         public static DateTime ExtractFtpDate( this string date, DateTimeStyles style )

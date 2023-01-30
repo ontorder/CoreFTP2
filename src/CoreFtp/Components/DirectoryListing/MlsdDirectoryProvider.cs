@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace CoreFtp.Components.DirectoryListing
 {
-    internal class MlsdDirectoryProvider : DirectoryProviderBase
+    internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
     {
         public MlsdDirectoryProvider( FtpClient ftpClient, ILogger logger, FtpClientConfiguration configuration )
         {

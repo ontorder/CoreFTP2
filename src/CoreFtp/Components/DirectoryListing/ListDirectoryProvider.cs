@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace CoreFtp.Components.DirectoryListing
 {
-    internal class ListDirectoryProvider : DirectoryProviderBase
+    internal sealed class ListDirectoryProvider : DirectoryProviderBase
     {
         private readonly List<IListDirectoryParser> directoryParsers;
 

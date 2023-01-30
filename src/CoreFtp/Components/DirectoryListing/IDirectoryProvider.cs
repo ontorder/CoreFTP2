@@ -1,11 +1,11 @@
-﻿namespace CoreFtp.Components.DirectoryListing
-{
-    using System.Collections.Generic;
-    using System.Collections.ObjectModel;
-    using System.Threading.Tasks;
-    using CoreFtp.Enum;
-    using Infrastructure;
+﻿using CoreFtp.Enum;
+using CoreFtp.Infrastructure;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Threading.Tasks;
 
+namespace CoreFtp.Components.DirectoryListing
+{
     internal interface IDirectoryProvider
     {
         /// <summary>

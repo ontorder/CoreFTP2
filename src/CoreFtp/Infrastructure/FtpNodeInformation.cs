@@ -1,8 +1,8 @@
-﻿namespace CoreFtp.Infrastructure
-{
-    using System;
-    using Enum;
+﻿using System;
+using CoreFtp.Enum;
 
+namespace CoreFtp.Infrastructure
+{
     public class FtpNodeInformation
     {
         public string Name { get; set; }

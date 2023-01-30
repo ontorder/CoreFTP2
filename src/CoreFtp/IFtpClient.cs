@@ -48,9 +48,9 @@ namespace CoreFtp
 
         Task<ReadOnlyCollection<FtpNodeInformation>> ListDirectoriesAsync();
 
-        Task<ReadOnlyCollection<FtpNodeInformation>> ListFilesAsync(DirSort? sortBy);
+        Task<ReadOnlyCollection<FtpNodeInformation>> ListFilesAsync(DirSort? sortBy = null);
 
-        IAsyncEnumerable<FtpNodeInformation> ListFilesAsyncEnum(DirSort? sortBy);
+        IAsyncEnumerable<FtpNodeInformation> ListFilesAsyncEnum(DirSort? sortBy = null);
 
         Task RenameAsync(string from, string to);
 
