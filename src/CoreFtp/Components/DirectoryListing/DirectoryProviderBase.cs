@@ -12,10 +12,10 @@ namespace CoreFtp.Components.DirectoryListing
 {
     internal abstract class DirectoryProviderBase : IDirectoryProvider
     {
-        protected FtpClient ftpClient;
-        protected FtpClientConfiguration configuration;
-        protected ILogger logger;
-        protected Stream stream;
+        protected FtpClientConfiguration _configuration;
+        protected FtpClient _ftpClient;
+        protected ILogger _logger;
+        protected Stream _stream;
 
         public virtual Task<ReadOnlyCollection<FtpNodeInformation>> ListAllAsync() => throw new NotImplementedException();
 
@@ -28,9 +28,9 @@ namespace CoreFtp.Components.DirectoryListing
         protected IEnumerable<string> RetrieveDirectoryListing()
         {
             string line;
-            while ((line = ReadLine(ftpClient.ControlStream.Encoding)) != null)
+            while ((line = ReadLine(_ftpClient.ControlStream.Encoding)) != null)
             {
-                logger?.LogDebug(line);
+                _logger?.LogDebug(line);
                 yield return line;
             }
         }
@@ -38,9 +38,9 @@ namespace CoreFtp.Components.DirectoryListing
         protected async IAsyncEnumerable<string> RetrieveDirectoryListingAsyncEnum()
         {
             string line;
-            while ((line = await ReadLineAsync(ftpClient.ControlStream.Encoding)) != null)
+            while ((line = await ReadLineAsync(_ftpClient.ControlStream.Encoding)) != null)
             {
-                logger?.LogDebug(line);
+                _logger?.LogDebug(line);
                 yield return line;
             }
         }
@@ -54,7 +54,7 @@ namespace CoreFtp.Components.DirectoryListing
             var buf = new byte[1];
             string line = null;
 
-            while (stream.Read(buf, 0, buf.Length) > 0)
+            while (_stream.Read(buf, 0, buf.Length) > 0)
             {
                 data.Add(buf[0]);
                 if ((char)buf[0] != '\n')
@@ -75,7 +75,7 @@ namespace CoreFtp.Components.DirectoryListing
             var buf = new byte[1];
             string line = null;
 
-            while (await stream.ReadAsync(buf, 0, buf.Length) > 0)
+            while (await _stream.ReadAsync(buf, 0, buf.Length) > 0)
             {
                 data.Add(buf[0]);
                 if ((char)buf[0] != '\n')

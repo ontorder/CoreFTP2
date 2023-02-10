@@ -2,6 +2,8 @@
 using CoreFtp.Infrastructure;
 using CoreFtp.Infrastructure.Extensions;
 using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -10,42 +12,29 @@ namespace CoreFtp.Components.DirectoryListing
 {
     internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
     {
-        public MlsdDirectoryProvider( FtpClient ftpClient, ILogger logger, FtpClientConfiguration configuration )
+        public MlsdDirectoryProvider(FtpClient ftpClient, ILogger logger, FtpClientConfiguration configuration)
         {
-            this.ftpClient = ftpClient;
-            this.configuration = configuration;
-            this.logger = logger;
+            _ftpClient = ftpClient;
+            _configuration = configuration;
+            _logger = logger;
         }
 
         private void EnsureLoggedIn()
         {
-            if ( !ftpClient.IsConnected || !ftpClient.IsAuthenticated )
-                throw new FtpException( "User must be logged in" );
+            if (!_ftpClient.IsConnected || !_ftpClient.IsAuthenticated)
+                throw new FtpException("User must be logged in");
         }
 
         public override async Task<ReadOnlyCollection<FtpNodeInformation>> ListAllAsync()
         {
             try
             {
-                await ftpClient.dataSocketSemaphore.WaitAsync();
+                await _ftpClient.dataSocketSemaphore.WaitAsync();
                 return await ListNodeTypeAsync();
             }
             finally
             {
-                ftpClient.dataSocketSemaphore.Release();
-            }
-        }
-
-        public override async Task<ReadOnlyCollection<FtpNodeInformation>> ListFilesAsync(DirSort? sortBy = null)
-        {
-            try
-            {
-                await ftpClient.dataSocketSemaphore.WaitAsync();
-                return await ListNodeTypeAsync( FtpNodeType.File );
-            }
-            finally
-            {
-                ftpClient.dataSocketSemaphore.Release();
+                _ftpClient.dataSocketSemaphore.Release();
             }
         }
 
@@ -53,21 +42,43 @@ namespace CoreFtp.Components.DirectoryListing
         {
             try
             {
-                await ftpClient.dataSocketSemaphore.WaitAsync();
-                return await ListNodeTypeAsync( FtpNodeType.Directory );
+                await _ftpClient.dataSocketSemaphore.WaitAsync();
+                return await ListNodeTypeAsync(FtpNodeType.Directory);
             }
             finally
             {
-                ftpClient.dataSocketSemaphore.Release();
+                _ftpClient.dataSocketSemaphore.Release();
             }
         }
 
-        /// <summary>
-        /// Lists all nodes (files and directories) in the current working directory
-        /// </summary>
-        /// <param name="ftpNodeType"></param>
-        /// <returns></returns>
-        private async Task<ReadOnlyCollection<FtpNodeInformation>> ListNodeTypeAsync( FtpNodeType? ftpNodeType = null )
+        public override async Task<ReadOnlyCollection<FtpNodeInformation>> ListFilesAsync(DirSort? sortBy = null)
+        {
+            try
+            {
+                await _ftpClient.dataSocketSemaphore.WaitAsync();
+                return await ListNodeTypeAsync(FtpNodeType.File);
+            }
+            finally
+            {
+                _ftpClient.dataSocketSemaphore.Release();
+            }
+        }
+
+        public override async IAsyncEnumerable<FtpNodeInformation> ListFilesAsyncEnum(DirSort? sortBy = null)
+        {
+            try
+            {
+                await _ftpClient.dataSocketSemaphore.WaitAsync();
+                await foreach (var v in ListNodesAsyncEnum(FtpNodeType.File, sortBy))
+                    yield return v;
+            }
+            finally
+            {
+                _ftpClient.dataSocketSemaphore.Release();
+            }
+        }
+
+        private async Task<ReadOnlyCollection<FtpNodeInformation>> ListNodeTypeAsync(FtpNodeType? ftpNodeType = null)
         {
             string nodeTypeString = !ftpNodeType.HasValue
                 ? "all"
@@ -75,35 +86,83 @@ namespace CoreFtp.Components.DirectoryListing
                     ? "file"
                     : "dir";
 
-            logger?.LogDebug( $"[MlsdDirectoryProvider] Listing {ftpNodeType}" );
+            _logger?.LogDebug($"[MlsdDirectoryProvider] Listing {ftpNodeType}");
 
             EnsureLoggedIn();
 
             try
             {
-                stream = await ftpClient.ConnectDataStreamAsync();
-                if ( stream == null )
-                    throw new FtpException( "Could not establish a data connection" );
+                _stream = await _ftpClient.ConnectDataStreamAsync();
+                if (_stream == null)
+                    throw new FtpException("Could not establish a data connection");
 
-                var result = await ftpClient.ControlStream.SendCommandAsync( FtpCommand.MLSD );
-                if ( ( result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen ) && ( result.FtpStatusCode != FtpStatusCode.OpeningData ) && ( result.FtpStatusCode != FtpStatusCode.ClosingData ) )
-                    throw new FtpException( "Could not retrieve directory listing " + result.ResponseMessage );
+                var result = await _ftpClient.ControlStream.SendCommandAsync(FtpCommand.MLSD);
+                if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData) && (result.FtpStatusCode != FtpStatusCode.ClosingData))
+                    throw new FtpException("Could not retrieve directory listing " + result.ResponseMessage);
 
                 var directoryListing = RetrieveDirectoryListing().ToList();
 
-                var nodes = ( from node in directoryListing
-                              where !node.IsNullOrWhiteSpace()
-                              where !ftpNodeType.HasValue || node.Contains( $"type={nodeTypeString}" )
-                              select node.ToFtpNode() )
-                    .ToList();
-
+                var nodes = (
+                    from node in directoryListing
+                    where !node.IsNullOrWhiteSpace()
+                    where !ftpNodeType.HasValue || node.Contains($"type={nodeTypeString}")
+                    select node.ToFtpNode()
+                ).ToList();
 
                 return nodes.AsReadOnly();
             }
             finally
             {
-                stream?.Dispose();
-                stream = null;
+                _stream?.Dispose();
+                _stream = null;
+            }
+        }
+
+        private async IAsyncEnumerable<FtpNodeInformation> ListNodesAsyncEnum(FtpNodeType? ftpNodeType = null, DirSort? sortBy = null)
+        {
+            string nodeTypeString = !ftpNodeType.HasValue
+                ? "all"
+                : ftpNodeType.Value == FtpNodeType.File
+                    ? "file"
+                    : "dir";
+
+            EnsureLoggedIn();
+            _logger?.LogDebug($"[MlsdDirectoryProvider] Listing {ftpNodeType}");
+
+            try
+            {
+                _stream = await _ftpClient.ConnectDataStreamAsync();
+                var result = await _ftpClient.ControlStream.SendCommandAsync(new FtpCommandEnvelope
+                {
+                    FtpCommand = FtpCommand.MLSD,
+                    Data = null
+                });
+
+                if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData))
+                    throw new FtpException("Could not retrieve directory listing: " + result.ResponseMessage);
+
+                var nodes = new List<FtpNodeInformation>();
+                await foreach (var line in RetrieveDirectoryListingAsyncEnum())
+                {
+                    if (line.IsNullOrWhiteSpace()) continue;
+                    if (ftpNodeType.HasValue && !line.Contains($"type={nodeTypeString}")) continue;
+                    nodes.Add(line.ToFtpNode());
+                }
+
+                IEnumerable<FtpNodeInformation> sortedNodes = sortBy switch
+                {
+                    DirSort.Alphabetical => nodes.OrderBy(no => no.Name),
+                    DirSort.AlphabeticalReverse => nodes.OrderByDescending(no => no.Name),
+                    DirSort.ModifiedTimestampReverse => nodes.OrderByDescending(no => no.DateModified),
+                    null => nodes,
+                    _ => throw new Exception(),
+                };
+                foreach (var node in sortedNodes)
+                    yield return node;
+            }
+            finally
+            {
+                _stream.Dispose();
             }
         }
     }

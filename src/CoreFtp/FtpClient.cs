@@ -395,9 +395,10 @@ namespace CoreFtp
         {
             string filePath = WorkingDirectory.CombineAsUriWith(fileName);
             Logger?.LogDebug($"[FtpClient] Opening file read stream for {filePath}");
-            var segments = filePath.Split('/')
-                                   .Where(x => !x.IsNullOrWhiteSpace())
-                                   .ToList();
+            var segments = filePath
+                .Split('/')
+                .Where(x => !x.IsNullOrWhiteSpace())
+                .ToList();
             await CreateDirectoryStructureRecursively(segments.Take(segments.Count - 1).ToArray(), filePath.StartsWith("/"));
             return new FtpDataStream(await OpenFileStreamAsync(filePath, FtpCommand.STOR), this, Logger);
         }

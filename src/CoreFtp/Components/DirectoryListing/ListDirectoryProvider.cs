@@ -12,24 +12,24 @@ namespace CoreFtp.Components.DirectoryListing
 {
     internal sealed class ListDirectoryProvider : DirectoryProviderBase
     {
-        private readonly List<IListDirectoryParser> directoryParsers;
+        private readonly List<IListDirectoryParser> _directoryParsers;
 
         public ListDirectoryProvider(FtpClient ftpClient, ILogger logger, FtpClientConfiguration configuration)
         {
-            this.ftpClient = ftpClient;
-            this.logger = logger;
-            this.configuration = configuration;
+            _ftpClient = ftpClient;
+            _logger = logger;
+            _configuration = configuration;
 
-            directoryParsers = new List<IListDirectoryParser>
+            _directoryParsers = new List<IListDirectoryParser>
             {
-                new UnixDirectoryParser( logger ),
-                new DosDirectoryParser( logger ),
+                new UnixDirectoryParser(logger),
+                new DosDirectoryParser(logger),
             };
         }
 
         private void EnsureLoggedIn()
         {
-            if (!ftpClient.IsConnected || !ftpClient.IsAuthenticated)
+            if (!_ftpClient.IsConnected || !_ftpClient.IsAuthenticated)
                 throw new FtpException("User must be logged in");
         }
 
@@ -37,12 +37,12 @@ namespace CoreFtp.Components.DirectoryListing
         {
             try
             {
-                await ftpClient.dataSocketSemaphore.WaitAsync();
+                await _ftpClient.dataSocketSemaphore.WaitAsync();
                 return await ListNodesAsync();
             }
             finally
             {
-                ftpClient.dataSocketSemaphore.Release();
+                _ftpClient.dataSocketSemaphore.Release();
             }
         }
 
@@ -50,12 +50,12 @@ namespace CoreFtp.Components.DirectoryListing
         {
             try
             {
-                await ftpClient.dataSocketSemaphore.WaitAsync();
+                await _ftpClient.dataSocketSemaphore.WaitAsync();
                 return await ListNodesAsync(FtpNodeType.File, sortBy);
             }
             finally
             {
-                ftpClient.dataSocketSemaphore.Release();
+                _ftpClient.dataSocketSemaphore.Release();
             }
         }
 
@@ -63,13 +63,13 @@ namespace CoreFtp.Components.DirectoryListing
         {
             try
             {
-                await ftpClient.dataSocketSemaphore.WaitAsync();
+                await _ftpClient.dataSocketSemaphore.WaitAsync();
                 await foreach (var v in ListNodesAsyncEnum(FtpNodeType.File, sortBy))
                     yield return v;
             }
             finally
             {
-                ftpClient.dataSocketSemaphore.Release();
+                _ftpClient.dataSocketSemaphore.Release();
             }
         }
 
@@ -77,12 +77,12 @@ namespace CoreFtp.Components.DirectoryListing
         {
             try
             {
-                await ftpClient.dataSocketSemaphore.WaitAsync();
+                await _ftpClient.dataSocketSemaphore.WaitAsync();
                 return await ListNodesAsync(FtpNodeType.Directory);
             }
             finally
             {
-                ftpClient.dataSocketSemaphore.Release();
+                _ftpClient.dataSocketSemaphore.Release();
             }
         }
 
@@ -94,11 +94,11 @@ namespace CoreFtp.Components.DirectoryListing
         private async Task<ReadOnlyCollection<FtpNodeInformation>> ListNodesAsync(FtpNodeType? ftpNodeType = null, DirSort? sortBy = null)
         {
             EnsureLoggedIn();
-            logger?.LogDebug($"[ListDirectoryProvider] Listing {ftpNodeType}");
+            _logger?.LogDebug($"[ListDirectoryProvider] Listing {ftpNodeType}");
 
             try
             {
-                stream = await ftpClient.ConnectDataStreamAsync();
+                _stream = await _ftpClient.ConnectDataStreamAsync();
 
                 string arguments;
                 switch (sortBy)
@@ -111,7 +111,7 @@ namespace CoreFtp.Components.DirectoryListing
                     case null: arguments = String.Empty; break;
                 }
 
-                var result = await ftpClient.ControlStream.SendCommandAsync(new FtpCommandEnvelope
+                var result = await _ftpClient.ControlStream.SendCommandAsync(new FtpCommandEnvelope
                 {
                     FtpCommand = FtpCommand.LIST,
                     Data = arguments
@@ -128,7 +128,7 @@ namespace CoreFtp.Components.DirectoryListing
                     if (first)
                     {
                         first = false;
-                        parser = directoryParsers.FirstOrDefault(parser => parser.Test(line));
+                        parser = _directoryParsers.FirstOrDefault(parser => parser.Test(line));
                     }
 
                     if (parser == null)
@@ -144,38 +144,33 @@ namespace CoreFtp.Components.DirectoryListing
             }
             finally
             {
-                stream.Dispose();
+                _stream.Dispose();
             }
         }
 
         private async IAsyncEnumerable<FtpNodeInformation> ListNodesAsyncEnum(FtpNodeType? ftpNodeType = null, DirSort? sortBy = null)
         {
             EnsureLoggedIn();
-            logger?.LogDebug($"[ListDirectoryProvider] Listing {ftpNodeType}");
+            _logger?.LogDebug($"[ListDirectoryProvider] Listing {ftpNodeType}");
 
             try
             {
-                stream = await ftpClient.ConnectDataStreamAsync();
-
-                string arguments;
-                switch (sortBy)
+                _stream = await _ftpClient.ConnectDataStreamAsync();
+                string arguments = sortBy switch
                 {
-                    case DirSort.Alphabetical: arguments = "-1"; break; // -S ???
-                    case DirSort.AlphabeticalReverse: arguments = "-r"; break;
-                    case DirSort.ModifiedTimestampReverse: arguments = "-t"; break;
-
-                    default:
-                    case null: arguments = String.Empty; break;
-                }
-
-                var result = await ftpClient.ControlStream.SendCommandAsync(new FtpCommandEnvelope
+                    DirSort.Alphabetical => "-1",
+                    DirSort.AlphabeticalReverse => "-r",
+                    DirSort.ModifiedTimestampReverse => "-t",
+                    _ => String.Empty,
+                };
+                var result = await _ftpClient.ControlStream.SendCommandAsync(new FtpCommandEnvelope
                 {
                     FtpCommand = FtpCommand.LIST,
                     Data = arguments
                 });
 
                 if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData))
-                    throw new FtpException("Could not retrieve directory listing " + result.ResponseMessage);
+                    throw new FtpException("Could not retrieve directory listing: " + result.ResponseMessage);
 
                 bool first = true;
                 var nodes = new List<FtpNodeInformation>();
@@ -185,7 +180,7 @@ namespace CoreFtp.Components.DirectoryListing
                     if (first)
                     {
                         first = false;
-                        parser = directoryParsers.FirstOrDefault(parser => parser.Test(line));
+                        parser = _directoryParsers.FirstOrDefault(parser => parser.Test(line));
                     }
 
                     if (parser == null)
@@ -199,7 +194,7 @@ namespace CoreFtp.Components.DirectoryListing
             }
             finally
             {
-                stream.Dispose();
+                _stream.Dispose();
             }
         }
     }

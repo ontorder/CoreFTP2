@@ -18,6 +18,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoreFtp", "src\CoreFtp\Core
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoreFtp.Tests.Integration", "tests\CoreFtp.Tests.Integration\CoreFtp.Tests.Integration.csproj", "{686F56E6-EB65-4DE5-867B-77E5123CB427}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PracticalTest", "tests\PracticalTest\PracticalTest.csproj", "{72AEC56C-FDDB-4BE0-9E69-DE902D6F085B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -32,12 +34,17 @@ Global
 		{686F56E6-EB65-4DE5-867B-77E5123CB427}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{686F56E6-EB65-4DE5-867B-77E5123CB427}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{686F56E6-EB65-4DE5-867B-77E5123CB427}.Release|Any CPU.Build.0 = Release|Any CPU
+		{72AEC56C-FDDB-4BE0-9E69-DE902D6F085B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{72AEC56C-FDDB-4BE0-9E69-DE902D6F085B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{72AEC56C-FDDB-4BE0-9E69-DE902D6F085B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{72AEC56C-FDDB-4BE0-9E69-DE902D6F085B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{686F56E6-EB65-4DE5-867B-77E5123CB427} = {E65B8458-FD87-4890-BCEC-8EF445266F93}
+		{72AEC56C-FDDB-4BE0-9E69-DE902D6F085B} = {E65B8458-FD87-4890-BCEC-8EF445266F93}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {61ADEA5C-5A29-45A6-A62C-C6BAD76C150A}

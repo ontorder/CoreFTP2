@@ -7,19 +7,13 @@ namespace CoreFtp.Infrastructure.Extensions
     public static class StringExtensions
     {
         internal static bool IsNullOrEmpty(this string operand)
-        {
-            return string.IsNullOrEmpty(operand);
-        }
+            => string.IsNullOrEmpty(operand);
 
         internal static bool IsNullOrWhiteSpace(this string operand)
-        {
-            return string.IsNullOrWhiteSpace(operand);
-        }
+            => string.IsNullOrWhiteSpace(operand);
 
         internal static string CombineAsUriWith(this string operand, string rightHandSide)
-        {
-            return string.Format("{0}/{1}", operand.TrimEnd('/'), rightHandSide.Trim('/'));
-        }
+            => string.Format("{0}/{1}", operand.TrimEnd('/'), rightHandSide.Trim('/'));
 
         internal static int? ExtractPasvPortNumber(this string operand)
         {
@@ -51,36 +45,33 @@ namespace CoreFtp.Infrastructure.Extensions
             return int.Parse(match.Groups["PortNumber"].Value);
         }
 
-        private static FtpNodeType ToNodeType(this string operand)
+        private static FtpNodeType ToNodeType(this string operand) => operand switch
         {
-            switch (operand)
-            {
-                case "dir":
-                    return FtpNodeType.Directory;
-                case "file":
-                    return FtpNodeType.File;
-            }
-
-            return FtpNodeType.SymbolicLink;
-        }
+            "dir" => FtpNodeType.Directory,
+            "file" => FtpNodeType.File,
+            _ => FtpNodeType.SymbolicLink,
+        };
 
         internal static FtpNodeInformation ToFtpNode(this string operand)
         {
-            var dictionary = operand.Split(';')
-                                    .Select(s => s.Split('='))
-                                    .ToDictionary(strings => strings.Length == 2
-                                                       ? strings[0]
-                                                       : "name",
-                                                   strings => strings.Length == 2
-                                                       ? strings[1]
-                                                       : strings[0]);
+            var dictionary = operand
+                .Split(';')
+                .Select(s => s.Split('='))
+                .ToDictionary(
+                    strings => strings.Length == 2
+                        ? strings[0]
+                        : "name",
+                    strings => strings.Length == 2
+                        ? strings[1]
+                        : strings[0]
+                );
 
             return new FtpNodeInformation
             {
                 NodeType = dictionary.GetValueOrDefault("type").Trim().ToNodeType(),
                 Name = dictionary.GetValueOrDefault("name").Trim(),
                 Size = dictionary.GetValueOrDefault("size").ParseOrDefault(),
-                DateModified = dictionary.GetValueOrDefault("modify").ParseExactOrDefault("yyyyMMddHHmmss")
+                DateModified = dictionary.GetValueOrDefault("modify").ParseExactOrDefault("yyyyMMddHHmmss", "yyyyMMddHHmmss.fff")
             };
         }
     }
