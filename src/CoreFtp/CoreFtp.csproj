@@ -4,8 +4,8 @@
     <Description>A simple .NET FTP library written entirely in C#, with no external dependencies</Description>
     <Copyright>Nick Briscoe 2016</Copyright>
     <AssemblyTitle>CoreFTP</AssemblyTitle>
-    <VersionPrefix>1.5.4</VersionPrefix>
-    <Version>1.5.4</Version>
+    <VersionPrefix>1.6.0</VersionPrefix>
+    <Version>1.6.0</Version>
     <Authors>Nick Briscoe</Authors>
     <TargetFrameworks>net6</TargetFrameworks>
     <AssemblyName>CoreFtp</AssemblyName>
