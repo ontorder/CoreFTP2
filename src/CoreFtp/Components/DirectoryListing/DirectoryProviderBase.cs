@@ -30,16 +30,6 @@ public abstract class DirectoryProviderBase : IDirectoryProvider
 
     public virtual Task<ReadOnlyCollection<FtpNodeInformation>> ListFilesAsync(DirSort? sortBy = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
 
-    //protected IEnumerable<string?> RetrieveDirectoryListing()
-    //{
-    //    string? line;
-    //    while ((line = ReadLine(FtpClient.ControlStream.Encoding)) != null)
-    //    {
-    //        Logger?.LogDebug("{line}", line);
-    //        yield return line;
-    //    }
-    //}
-
     protected async Task<IEnumerable<string>> RetrieveDirectoryListingAsync(CancellationToken cancellationToken)
     {
         var lines = await ReadLinesAsync(FtpClient.ControlStream.Encoding, cancellationToken);
@@ -55,27 +45,6 @@ public abstract class DirectoryProviderBase : IDirectoryProvider
             yield return line;
         }
     }
-
-    //protected string? ReadLine(Encoding encoding)
-    //{
-    //    if (encoding == null)
-    //        throw new ArgumentNullException(nameof(encoding));
-    //
-    //    var data = new List<byte>();
-    //    var buf = new byte[1];
-    //    string? line = null;
-    //
-    //    while (Stream.Read(buf, 0, buf.Length) > 0)
-    //    {
-    //        data.Add(buf[0]);
-    //        if ((char)buf[0] != '\n')
-    //            continue;
-    //        line = encoding.GetString(data.ToArray()).Trim('\r', '\n');
-    //        break;
-    //    }
-    //
-    //    return line;
-    //}
 
     protected async Task<ICollection<string>> ReadLinesAsync(Encoding encoding, CancellationToken cancellationToken)
     {
@@ -97,6 +66,7 @@ public abstract class DirectoryProviderBase : IDirectoryProvider
         return SplitEncode(data.WrittenSpan, encoding);
     }
 
+    // TODO use Pipe
     protected async IAsyncEnumerable<string> ReadLineAsyncEnum(Encoding encoding, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         const int MaxReadSize = 512;
