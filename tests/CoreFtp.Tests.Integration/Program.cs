@@ -19,7 +19,8 @@ public static class Program
     {
         LoggerFactory = new LoggerFactory()
             .AddXunitConsole(outputHelper, LogLevel.Debug)
-            .AddDebug(LogLevel.Error);
+            //.AddDebug(LogLevel.Error)
+        ;
 
         var builder = new ConfigurationBuilder()
             .SetBasePath(AppContext.BaseDirectory)
