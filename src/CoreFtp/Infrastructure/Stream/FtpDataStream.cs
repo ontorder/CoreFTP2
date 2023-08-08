@@ -4,105 +4,103 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
-namespace CoreFtp.Infrastructure.Stream
+namespace CoreFtp.Infrastructure.Stream;
+
+public sealed class FtpDataStream : System.IO.Stream
 {
-    public sealed class FtpDataStream : System.IO.Stream
+    private readonly FtpClient _client;
+    private readonly System.IO.Stream _encapsulatedStream;
+    private readonly ILogger _logger;
+
+    public override bool CanRead => _encapsulatedStream.CanRead;
+    public override bool CanSeek => _encapsulatedStream.CanSeek;
+    public override bool CanWrite => _encapsulatedStream.CanWrite;
+    public override long Length => _encapsulatedStream.Length;
+
+    public override long Position
     {
-        private readonly System.IO.Stream encapsulatedStream;
-        private readonly FtpClient client;
-        private ILogger Logger { get; set; }
+        get { return _encapsulatedStream.Position; }
+        set { _encapsulatedStream.Position = value; }
+    }
 
-        public override bool CanRead => encapsulatedStream.CanRead;
-        public override bool CanSeek => encapsulatedStream.CanSeek;
-        public override bool CanWrite => encapsulatedStream.CanWrite;
-        public override long Length => encapsulatedStream.Length;
+    public FtpDataStream(System.IO.Stream encapsulatedStream, FtpClient client, ILogger logger)
+    {
+        _logger = logger;
+        _logger?.LogDebug("[FtpDataStream] Constructing");
+        _encapsulatedStream = encapsulatedStream;
+        _client = client;
+    }
 
-        public override long Position
+    protected override void Dispose(bool disposing)
+    {
+        _logger?.LogDebug("[FtpDataStream] Disposing");
+        base.Dispose(disposing);
+
+        try
         {
-            get { return encapsulatedStream.Position; }
-            set { encapsulatedStream.Position = value; }
-        }
+            _encapsulatedStream.Dispose();
 
-
-        public FtpDataStream(System.IO.Stream encapsulatedStream, FtpClient client, ILogger logger)
-        {
-            Logger = logger;
-            Logger?.LogDebug("[FtpDataStream] Constructing");
-            this.encapsulatedStream = encapsulatedStream;
-            this.client = client;
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            Logger?.LogDebug("[FtpDataStream] Disposing");
-            base.Dispose(disposing);
-
-            try
+            if (_client.Configuration.DisconnectTimeoutMilliseconds.HasValue)
             {
-                encapsulatedStream.Dispose();
-
-                if (client.Configuration.DisconnectTimeoutMilliseconds.HasValue)
-                {
-                    client.ControlStream.SetTimeouts(client.Configuration.DisconnectTimeoutMilliseconds.Value);
-                }
-                client.CloseFileDataStreamAsync().Wait();
+                _client.ControlStream.SetTimeouts(_client.Configuration.DisconnectTimeoutMilliseconds.Value);
             }
-            catch (Exception e)
-            {
-                Logger?.LogWarning(0, e, "Closing the data stream took longer than expected");
-            }
-            finally
-            {
-                client.ControlStream.ResetTimeouts();
-            }
+            _client.CloseFileDataStreamAsync().Wait();
         }
-
-        public override async Task FlushAsync(CancellationToken cancellationToken)
+        catch (Exception disposeErr)
         {
-            Logger?.LogDebug("[FtpDataStream] FlushAsync");
-            await encapsulatedStream.FlushAsync(cancellationToken);
+            _logger?.LogWarning(0, disposeErr, "Closing the data stream took longer than expected");
         }
-
-        public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        finally
         {
-            Logger?.LogDebug("[FtpDataStream] ReadAsync");
-            return await encapsulatedStream.ReadAsync(buffer, offset, count, cancellationToken);
+            _client.ControlStream.ResetTimeouts();
         }
+    }
 
-        public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
-        {
-            Logger?.LogDebug("[FtpDataStream] WriteAsync");
-            await encapsulatedStream.WriteAsync(buffer, offset, count, cancellationToken);
-        }
+    public override async Task FlushAsync(CancellationToken cancellationToken)
+    {
+        _logger?.LogDebug("[FtpDataStream] FlushAsync");
+        await _encapsulatedStream.FlushAsync(cancellationToken);
+    }
 
-        public override void Flush()
-        {
-            Logger?.LogDebug("[FtpDataStream] Flush");
-            encapsulatedStream.Flush();
-        }
+    public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+    {
+        _logger?.LogDebug("[FtpDataStream] ReadAsync");
+        return await _encapsulatedStream.ReadAsync(buffer.AsMemory(offset, count), cancellationToken);
+    }
 
-        public override int Read(byte[] buffer, int offset, int count)
-        {
-            Logger?.LogDebug("[FtpDataStream] Read");
-            return encapsulatedStream.Read(buffer, offset, count);
-        }
+    public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+    {
+        _logger?.LogDebug("[FtpDataStream] WriteAsync");
+        await _encapsulatedStream.WriteAsync(buffer.AsMemory(offset, count), cancellationToken);
+    }
 
-        public override long Seek(long offset, SeekOrigin origin)
-        {
-            Logger?.LogDebug("[FtpDataStream] Seek");
-            return encapsulatedStream.Seek(offset, origin);
-        }
+    public override void Flush()
+    {
+        _logger?.LogDebug("[FtpDataStream] Flush");
+        _encapsulatedStream.Flush();
+    }
 
-        public override void SetLength(long value)
-        {
-            Logger?.LogDebug("[FtpDataStream] SetLength");
-            encapsulatedStream.SetLength(value);
-        }
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        _logger?.LogDebug("[FtpDataStream] Read");
+        return _encapsulatedStream.Read(buffer, offset, count);
+    }
 
-        public override void Write(byte[] buffer, int offset, int count)
-        {
-            Logger?.LogDebug("[FtpDataStream] Write");
-            encapsulatedStream.Write(buffer, offset, count);
-        }
+    public override long Seek(long offset, SeekOrigin origin)
+    {
+        _logger?.LogDebug("[FtpDataStream] Seek");
+        return _encapsulatedStream.Seek(offset, origin);
+    }
+
+    public override void SetLength(long value)
+    {
+        _logger?.LogDebug("[FtpDataStream] SetLength");
+        _encapsulatedStream.SetLength(value);
+    }
+
+    public override void Write(byte[] buffer, int offset, int count)
+    {
+        _logger?.LogDebug("[FtpDataStream] Write");
+        _encapsulatedStream.Write(buffer, offset, count);
     }
 }

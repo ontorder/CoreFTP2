@@ -34,7 +34,7 @@
 
                 var guid = Guid.NewGuid().ToString();
                 await sut.LoginAsync();
-                await sut.SetClientName( nameof( Should_create_directory_structure_recursively ) );
+                await sut.SetClientNameAsync( nameof( Should_create_directory_structure_recursively ) );
 
                 await sut.CreateDirectoryAsync( $"{guid}/abc/123" );
 

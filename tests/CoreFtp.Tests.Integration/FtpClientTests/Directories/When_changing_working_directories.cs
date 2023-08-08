@@ -33,7 +33,7 @@
             {
                 sut.Logger = Logger;
                 await sut.LoginAsync();
-                await sut.SetClientName( nameof( Should_fail_when_changing_to_a_nonexistent_directory ) );
+                await sut.SetClientNameAsync( nameof( Should_fail_when_changing_to_a_nonexistent_directory ) );
                 await Assert.ThrowsAsync<FtpException>( () => sut.ChangeWorkingDirectoryAsync( Guid.NewGuid().ToString() ) );
             }
         }

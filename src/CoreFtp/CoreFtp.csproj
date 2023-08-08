@@ -7,7 +7,7 @@
     <VersionPrefix>1.5.4</VersionPrefix>
     <Version>1.5.4</Version>
     <Authors>Nick Briscoe</Authors>
-    <TargetFrameworks>netstandard2.1</TargetFrameworks>
+    <TargetFrameworks>net6</TargetFrameworks>
     <AssemblyName>CoreFtp</AssemblyName>
     <PackageId>CoreFtp</PackageId>
     <PackageTags>ftp;core;vnext</PackageTags>
