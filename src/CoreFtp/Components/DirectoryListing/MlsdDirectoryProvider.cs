@@ -10,20 +10,22 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
+#nullable enable
+
 namespace CoreFtp.Components.DirectoryListing;
 
 internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
 {
     public MlsdDirectoryProvider(FtpClient ftpClient, ILogger logger, FtpClientConfiguration configuration)
     {
-        _ftpClient = ftpClient;
-        _configuration = configuration;
-        _logger = logger;
+        FtpClient = ftpClient;
+        Configuration = configuration;
+        Logger = logger;
     }
 
     private void EnsureLoggedIn()
     {
-        if (!_ftpClient.IsConnected || !_ftpClient.IsAuthenticated)
+        if (!FtpClient.IsConnected || !FtpClient.IsAuthenticated)
             throw new FtpException("User must be logged in");
     }
 
@@ -31,12 +33,12 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
     {
         try
         {
-            await _ftpClient.dataSocketSemaphore.WaitAsync(cancellationToken);
+            await FtpClient.DataSocketSemaphore.WaitAsync(cancellationToken);
             return await ListNodeTypeAsync(cancellationToken: cancellationToken);
         }
         finally
         {
-            _ftpClient.dataSocketSemaphore.Release();
+            FtpClient.DataSocketSemaphore.Release();
         }
     }
 
@@ -44,12 +46,12 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
     {
         try
         {
-            await _ftpClient.dataSocketSemaphore.WaitAsync(cancellationToken);
+            await FtpClient.DataSocketSemaphore.WaitAsync(cancellationToken);
             return await ListNodeTypeAsync(FtpNodeType.Directory, cancellationToken);
         }
         finally
         {
-            _ftpClient.dataSocketSemaphore.Release();
+            FtpClient.DataSocketSemaphore.Release();
         }
     }
 
@@ -57,12 +59,12 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
     {
         try
         {
-            await _ftpClient.dataSocketSemaphore.WaitAsync(cancellationToken);
+            await FtpClient.DataSocketSemaphore.WaitAsync(cancellationToken);
             return await ListNodeTypeAsync(FtpNodeType.File, cancellationToken);
         }
         finally
         {
-            _ftpClient.dataSocketSemaphore.Release();
+            FtpClient.DataSocketSemaphore.Release();
         }
     }
 
@@ -70,13 +72,13 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
     {
         try
         {
-            await _ftpClient.dataSocketSemaphore.WaitAsync(cancellationToken);
-            await foreach (var v in ListNodesAsyncEnum(FtpNodeType.File, sortBy, cancellationToken))
-                yield return v;
+            await FtpClient.DataSocketSemaphore.WaitAsync(cancellationToken);
+            await foreach (var node in ListNodesAsyncEnum(FtpNodeType.File, sortBy, cancellationToken))
+                yield return node;
         }
         finally
         {
-            _ftpClient.dataSocketSemaphore.Release();
+            FtpClient.DataSocketSemaphore.Release();
         }
     }
 
@@ -88,17 +90,17 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
                 ? "file"
                 : "dir";
 
-        _logger?.LogDebug("[MlsdDirectoryProvider] Listing {ftpNodeType}", ftpNodeType);
+        Logger?.LogDebug("[MlsdDirectoryProvider] Listing {ftpNodeType}", ftpNodeType);
 
         EnsureLoggedIn();
 
         try
         {
-            _stream = await _ftpClient.ConnectDataStreamAsync(cancellationToken);
-            if (_stream == null)
+            Stream = await FtpClient.ConnectDataStreamAsync(cancellationToken);
+            if (Stream == null)
                 throw new FtpException("Could not establish a data connection");
 
-            var result = await _ftpClient.ControlStream.SendCommandAsync(FtpCommand.MLSD, cancellationToken);
+            var result = await FtpClient.ControlStream.SendCommandAsync(FtpCommand.MLSD, cancellationToken);
             if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData) && (result.FtpStatusCode != FtpStatusCode.ClosingData))
                 throw new FtpException("Could not retrieve directory listing " + result.ResponseMessage);
 
@@ -114,8 +116,8 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
         }
         finally
         {
-            _stream?.Dispose();
-            _stream = null;
+            Stream?.Dispose();
+            Stream = null;
         }
     }
 
@@ -128,12 +130,12 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
                 : "dir";
 
         EnsureLoggedIn();
-        _logger?.LogDebug("[MlsdDirectoryProvider] Listing {ftpNodeType}", ftpNodeType);
+        Logger?.LogDebug("[MlsdDirectoryProvider] Listing {ftpNodeType}", ftpNodeType);
 
         try
         {
-            _stream = await _ftpClient.ConnectDataStreamAsync(cancellationToken);
-            var result = await _ftpClient.ControlStream.SendCommandAsync(new FtpCommandEnvelope
+            Stream = await FtpClient.ConnectDataStreamAsync(cancellationToken);
+            var result = await FtpClient.ControlStream.SendCommandAsync(new FtpCommandEnvelope
             {
                 FtpCommand = FtpCommand.MLSD,
                 Data = null
@@ -163,7 +165,7 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
         }
         finally
         {
-            _stream.Dispose();
+            Stream.Dispose();
         }
     }
 }

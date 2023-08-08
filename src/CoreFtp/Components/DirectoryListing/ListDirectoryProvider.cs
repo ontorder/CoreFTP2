@@ -10,6 +10,8 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
+#nullable enable
+
 namespace CoreFtp.Components.DirectoryListing;
 
 internal sealed class ListDirectoryProvider : DirectoryProviderBase
@@ -18,20 +20,20 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
 
     public ListDirectoryProvider(FtpClient ftpClient, ILogger logger, FtpClientConfiguration configuration)
     {
-        _ftpClient = ftpClient;
-        _logger = logger;
-        _configuration = configuration;
+        FtpClient = ftpClient;
+        Logger = logger;
+        Configuration = configuration;
 
         _directoryParsers = new List<IListDirectoryParser>
         {
-            new UnixDirectoryParser(logger),
-            new DosDirectoryParser(logger),
+            new UnixDirectoryParser(),
+            new DosDirectoryParser(),
         };
     }
 
     private void EnsureLoggedIn()
     {
-        if (!_ftpClient.IsConnected || !_ftpClient.IsAuthenticated)
+        if (!FtpClient.IsConnected || !FtpClient.IsAuthenticated)
             throw new FtpException("User must be logged in");
     }
 
@@ -39,12 +41,12 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
     {
         try
         {
-            await _ftpClient.dataSocketSemaphore.WaitAsync(cancellationToken);
+            await FtpClient.DataSocketSemaphore.WaitAsync(cancellationToken);
             return await ListNodesAsync(cancellationToken: cancellationToken);
         }
         finally
         {
-            _ftpClient.dataSocketSemaphore.Release();
+            FtpClient.DataSocketSemaphore.Release();
         }
     }
 
@@ -52,12 +54,12 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
     {
         try
         {
-            await _ftpClient.dataSocketSemaphore.WaitAsync(cancellationToken);
+            await FtpClient.DataSocketSemaphore.WaitAsync(cancellationToken);
             return await ListNodesAsync(FtpNodeType.File, sortBy, cancellationToken);
         }
         finally
         {
-            _ftpClient.dataSocketSemaphore.Release();
+            FtpClient.DataSocketSemaphore.Release();
         }
     }
 
@@ -65,13 +67,13 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
     {
         try
         {
-            await _ftpClient.dataSocketSemaphore.WaitAsync(cancellationToken);
+            await FtpClient.DataSocketSemaphore.WaitAsync(cancellationToken);
             await foreach (var v in ListNodesAsyncEnum(FtpNodeType.File, sortBy, cancellationToken))
                 yield return v;
         }
         finally
         {
-            _ftpClient.dataSocketSemaphore.Release();
+            FtpClient.DataSocketSemaphore.Release();
         }
     }
 
@@ -79,12 +81,12 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
     {
         try
         {
-            await _ftpClient.dataSocketSemaphore.WaitAsync(cancellationToken);
+            await FtpClient.DataSocketSemaphore.WaitAsync(cancellationToken);
             return await ListNodesAsync(FtpNodeType.Directory, cancellationToken: cancellationToken);
         }
         finally
         {
-            _ftpClient.dataSocketSemaphore.Release();
+            FtpClient.DataSocketSemaphore.Release();
         }
     }
 
@@ -96,11 +98,11 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
     private async Task<ReadOnlyCollection<FtpNodeInformation>> ListNodesAsync(FtpNodeType? ftpNodeType = null, DirSort? sortBy = null, CancellationToken cancellationToken = default)
     {
         EnsureLoggedIn();
-        _logger?.LogDebug("[ListDirectoryProvider] Listing {ftpNodeType}", ftpNodeType);
+        Logger?.LogDebug("[ListDirectoryProvider] Listing {ftpNodeType}", ftpNodeType);
 
         try
         {
-            _stream = await _ftpClient.ConnectDataStreamAsync(cancellationToken);
+            Stream = await FtpClient.ConnectDataStreamAsync(cancellationToken);
             string arguments = sortBy switch
             {
                 DirSort.Alphabetical => "-1",
@@ -108,7 +110,7 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
                 DirSort.ModifiedTimestampReverse => "-t",
                 _ => String.Empty,
             };
-            var result = await _ftpClient.ControlStream.SendCommandAsync(new FtpCommandEnvelope
+            var result = await FtpClient.ControlStream.SendCommandAsync(new FtpCommandEnvelope
             {
                 FtpCommand = FtpCommand.LIST,
                 Data = arguments
@@ -119,7 +121,7 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
 
             bool first = true;
             var nodes = new List<FtpNodeInformation>();
-            IListDirectoryParser parser = null;
+            IListDirectoryParser? parser = null;
             await foreach (var line in RetrieveDirectoryListingAsyncEnum(cancellationToken))
             {
                 if (first)
@@ -141,18 +143,18 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
         }
         finally
         {
-            _stream.Dispose();
+            Stream?.Dispose();
         }
     }
 
     private async IAsyncEnumerable<FtpNodeInformation> ListNodesAsyncEnum(FtpNodeType? ftpNodeType = null, DirSort? sortBy = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         EnsureLoggedIn();
-        _logger?.LogDebug("[ListDirectoryProvider] Listing {ftpNodeType}", ftpNodeType);
+        Logger?.LogDebug("[ListDirectoryProvider] Listing {ftpNodeType}", ftpNodeType);
 
         try
         {
-            _stream = await _ftpClient.ConnectDataStreamAsync(cancellationToken);
+            Stream = await FtpClient.ConnectDataStreamAsync(cancellationToken);
             string arguments = sortBy switch
             {
                 DirSort.Alphabetical => "-1",
@@ -160,7 +162,7 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
                 DirSort.ModifiedTimestampReverse => "-t",
                 _ => String.Empty,
             };
-            var result = await _ftpClient.ControlStream.SendCommandAsync(new FtpCommandEnvelope
+            var result = await FtpClient.ControlStream.SendCommandAsync(new FtpCommandEnvelope
             {
                 FtpCommand = FtpCommand.LIST,
                 Data = arguments
@@ -171,7 +173,7 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
 
             bool first = true;
             var nodes = new List<FtpNodeInformation>();
-            IListDirectoryParser parser = null;
+            IListDirectoryParser? parser = null;
             await foreach (var line in RetrieveDirectoryListingAsyncEnum(cancellationToken))
             {
                 if (first)
@@ -191,7 +193,7 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
         }
         finally
         {
-            _stream.Dispose();
+            Stream?.Dispose();
         }
     }
 }

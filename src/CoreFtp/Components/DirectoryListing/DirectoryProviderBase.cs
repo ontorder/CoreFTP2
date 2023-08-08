@@ -2,6 +2,7 @@ using CoreFtp.Enum;
 using CoreFtp.Infrastructure;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -12,12 +13,14 @@ using System.Threading.Tasks;
 
 namespace CoreFtp.Components.DirectoryListing;
 
-internal abstract class DirectoryProviderBase : IDirectoryProvider
+#nullable enable
+
+public abstract class DirectoryProviderBase : IDirectoryProvider
 {
-    protected FtpClientConfiguration _configuration;
-    protected FtpClient _ftpClient;
-    protected ILogger _logger;
-    protected Stream _stream;
+    protected FtpClientConfiguration? Configuration;
+    protected FtpClient? FtpClient;
+    protected ILogger? Logger;
+    protected Stream? Stream;
 
     public virtual Task<ReadOnlyCollection<FtpNodeInformation>> ListAllAsync(CancellationToken cancellationToken) => throw new NotImplementedException();
 
@@ -27,66 +30,140 @@ internal abstract class DirectoryProviderBase : IDirectoryProvider
 
     public virtual Task<ReadOnlyCollection<FtpNodeInformation>> ListFilesAsync(DirSort? sortBy = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
 
-    protected IEnumerable<string> RetrieveDirectoryListing()
+    //protected IEnumerable<string?> RetrieveDirectoryListing()
+    //{
+    //    string? line;
+    //    while ((line = ReadLine(FtpClient.ControlStream.Encoding)) != null)
+    //    {
+    //        Logger?.LogDebug("{line}", line);
+    //        yield return line;
+    //    }
+    //}
+
+    protected async Task<IEnumerable<string>> RetrieveDirectoryListingAsync(CancellationToken cancellationToken)
     {
-        string line;
-        while ((line = ReadLine(_ftpClient.ControlStream.Encoding)) != null)
-        {
-            _logger?.LogDebug("{line}", line);
-            yield return line;
-        }
+        var lines = await ReadLinesAsync(FtpClient.ControlStream.Encoding, cancellationToken);
+        Logger?.LogDebug("{lines}", lines);
+        return lines;
     }
 
     protected async IAsyncEnumerable<string> RetrieveDirectoryListingAsyncEnum([EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        string line;
-        while ((line = await ReadLineAsync(_ftpClient.ControlStream.Encoding, cancellationToken)) != null)
+        await foreach (string line in ReadLineAsyncEnum(FtpClient.ControlStream.Encoding, cancellationToken))
         {
-            _logger?.LogDebug("{line}", line);
+            Logger?.LogDebug("{line}", line);
             yield return line;
         }
     }
 
-    protected string ReadLine(Encoding encoding)
+    //protected string? ReadLine(Encoding encoding)
+    //{
+    //    if (encoding == null)
+    //        throw new ArgumentNullException(nameof(encoding));
+    //
+    //    var data = new List<byte>();
+    //    var buf = new byte[1];
+    //    string? line = null;
+    //
+    //    while (Stream.Read(buf, 0, buf.Length) > 0)
+    //    {
+    //        data.Add(buf[0]);
+    //        if ((char)buf[0] != '\n')
+    //            continue;
+    //        line = encoding.GetString(data.ToArray()).Trim('\r', '\n');
+    //        break;
+    //    }
+    //
+    //    return line;
+    //}
+
+    protected async Task<ICollection<string>> ReadLinesAsync(Encoding encoding, CancellationToken cancellationToken)
     {
+        const int MaxReadSize = 1024;
+
         if (encoding == null)
             throw new ArgumentNullException(nameof(encoding));
 
-        var data = new List<byte>();
-        var buf = new byte[1];
-        string line = null;
-
-        while (_stream.Read(buf, 0, buf.Length) > 0)
+        var data = new ArrayBufferWriter<byte>();
+        int count;
+        do
         {
-            data.Add(buf[0]);
-            if ((char)buf[0] != '\n')
-                continue;
-            line = encoding.GetString(data.ToArray()).Trim('\r', '\n');
-            break;
-        }
+            var buffer = new byte[MaxReadSize];
+            count = await Stream.ReadAsync(new Memory<byte>(buffer), cancellationToken);
+            if (count == 0) break;
+            data.Write(buffer.AsSpan()[..count]);
+        } while (count == MaxReadSize);
 
-        return line;
+        return SplitEncode(data.WrittenSpan, encoding);
     }
 
-    protected async Task<string> ReadLineAsync(Encoding encoding, CancellationToken cancellationToken)
+    protected async IAsyncEnumerable<string> ReadLineAsyncEnum(Encoding encoding, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        const int MaxReadSize = 512;
+
         if (encoding == null)
             throw new ArgumentNullException(nameof(encoding));
 
-        var data = new List<byte>();
-        var buf = new byte[1];
-        string line = null;
+        var data = new ArrayBufferWriter<byte>();
+        PartialSplitStatus split_status = new();
+        int count;
 
-        // TODO don't read 1 byte pls; make async enumerable?
-        while (await _stream.ReadAsync(buf, cancellationToken) > 0)
+        do
         {
-            data.Add(buf[0]);
-            if ((char)buf[0] != '\n')
-                continue;
-            line = encoding.GetString(data.ToArray()).Trim('\r', '\n');
-            break;
-        }
+            var buf = new byte[MaxReadSize];
+            count = await Stream.ReadAsync(buf, cancellationToken);
+            if (count == 0) break;
+            data.Write(buf.AsSpan()[..count]);
 
-        return line;
+            foreach (string line in SplitEncodePartial(data.WrittenSpan, encoding, split_status))
+                yield return line;
+        }
+        while (count == MaxReadSize);
+    }
+
+    public static ICollection<string> SplitEncode(ReadOnlySpan<byte> writtenSpan, Encoding encoding)
+    {
+        List<string> lines = new(1);
+        int prev_pos = 0;
+
+        do
+        {
+            int newline_pos = writtenSpan[prev_pos..].IndexOf((byte)'\n');
+            if (newline_pos == -1)
+            {
+                if (writtenSpan.Length > 0) throw new InvalidOperationException("non-terminated data");
+                break;
+            }
+            newline_pos += prev_pos;
+            var token = writtenSpan[prev_pos..newline_pos].TrimEnd((byte)'\r');
+            string encoded = encoding.GetString(token);
+            lines.Add(encoded);
+            prev_pos = newline_pos + 1;
+        } while (prev_pos < writtenSpan.Length);
+
+        return lines;
+    }
+
+    public static ICollection<string> SplitEncodePartial(ReadOnlySpan<byte> writtenSpan, Encoding encoding, PartialSplitStatus status)
+    {
+        List<string> lines = new(1);
+
+        do
+        {
+            int newline_pos = writtenSpan[status.PreviousPosition..].IndexOf((byte)'\n');
+            if (newline_pos == -1) break;
+            newline_pos += status.PreviousPosition;
+            var token = writtenSpan[status.PreviousPosition..newline_pos].TrimEnd((byte)'\r');
+            string encoded = encoding.GetString(token);
+            lines.Add(encoded);
+            status.PreviousPosition = newline_pos + 1;
+        } while (status.PreviousPosition < writtenSpan.Length);
+
+        return lines;
+    }
+
+    public class PartialSplitStatus
+    {
+        public int PreviousPosition = 0;
     }
 }

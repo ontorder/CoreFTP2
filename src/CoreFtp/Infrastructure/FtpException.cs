@@ -1,13 +1,12 @@
 ﻿using System;
 
-namespace CoreFtp.Infrastructure
+namespace CoreFtp.Infrastructure;
+
+public sealed class FtpException : Exception
 {
-    public sealed class FtpException : Exception
-    {
-        public FtpException() { }
+    public FtpException() { }
 
-        public FtpException(string message) : base(message) { }
+    public FtpException(string message) : base(message) { }
 
-        public FtpException(string message, Exception innerException) : base(message, innerException) { }
-    }
+    public FtpException(string message, Exception innerException) : base(message, innerException) { }
 }

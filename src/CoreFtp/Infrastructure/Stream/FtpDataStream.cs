@@ -4,6 +4,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
+#nullable enable
+
 namespace CoreFtp.Infrastructure.Stream;
 
 public sealed class FtpDataStream : System.IO.Stream
@@ -48,7 +50,7 @@ public sealed class FtpDataStream : System.IO.Stream
         }
         catch (Exception disposeErr)
         {
-            _logger?.LogWarning(0, disposeErr, "Closing the data stream took longer than expected");
+            _logger?.LogWarning(disposeErr, "Closing the data stream took longer than expected");
         }
         finally
         {

@@ -1,9 +1,8 @@
-﻿namespace CoreFtp.Enum
+﻿namespace CoreFtp.Enum;
+
+public enum FtpNodeType
 {
-    public enum FtpNodeType
-    {
-        File,
-        Directory,
-        SymbolicLink
-    }
+    File,
+    Directory,
+    SymbolicLink
 }

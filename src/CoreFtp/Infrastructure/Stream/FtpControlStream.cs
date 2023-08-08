@@ -1,8 +1,10 @@
-﻿using CoreFtp.Components.DnsResolution;
+﻿using CoreFtp.Components.DirectoryListing;
+using CoreFtp.Components.DnsResolution;
 using CoreFtp.Enum;
 using CoreFtp.Infrastructure.Extensions;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Security;
@@ -13,6 +15,8 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+
+#nullable enable
 
 namespace CoreFtp.Infrastructure.Stream;
 
@@ -27,14 +31,14 @@ public class FtpControlStream : System.IO.Stream
     public ILogger Logger;
     public override long Position { get => NetworkStream?.Position ?? 0; set => throw new InvalidOperationException(); }
 
-    protected System.IO.Stream BaseStream;
+    protected System.IO.Stream? BaseStream;
     protected readonly FtpClientConfiguration Configuration;
     protected readonly IDnsResolver DnsResolver;
     protected DateTime LastActivity = DateTime.Now;
     protected System.IO.Stream NetworkStream => SslStream ?? BaseStream;
     protected readonly SemaphoreSlim ReceiveSemaphore = new(1, 1);
     protected readonly SemaphoreSlim Semaphore = new(1, 1);
-    protected Socket Socket;
+    protected Socket? Socket;
     protected int SocketPollInterval { get; } = 15000;
     protected SslStream SslStream { get; set; }
 
@@ -84,13 +88,13 @@ public class FtpControlStream : System.IO.Stream
             catch (SocketException socketException)
             {
                 Disconnect();
-                Logger?.LogError(0, socketException, "FtpSocketStream.IsConnected: Caught and discarded SocketException while testing for connectivity");
+                Logger?.LogError(socketException, "FtpSocketStream.IsConnected: Caught and discarded SocketException while testing for connectivity");
                 return false;
             }
             catch (IOException ioException)
             {
                 Disconnect();
-                Logger?.LogError(1, ioException, $"FtpSocketStream.IsConnected: Caught and discarded IOException while testing for connectivity");
+                Logger?.LogError(ioException, $"FtpSocketStream.IsConnected: Caught and discarded IOException while testing for connectivity");
                 return false;
             }
 
@@ -99,7 +103,6 @@ public class FtpControlStream : System.IO.Stream
     }
 
     public override int Read(byte[] buffer, int offset, int count) => NetworkStream?.Read(buffer, offset, count) ?? 0;
-
 
     public override void Write(byte[] buffer, int offset, int count) => NetworkStream?.Write(buffer, offset, count);
 
@@ -142,38 +145,38 @@ public class FtpControlStream : System.IO.Stream
         await WriteAsync(data, cancellationToken);
     }
 
-    protected string ReadLine(Encoding encoding, CancellationToken token)
-    {
-        if (encoding == null)
-            throw new ArgumentNullException(nameof(encoding));
+    //protected string? ReadLine(Encoding encoding, CancellationToken token)
+    //{
+    //    if (encoding == null)
+    //        throw new ArgumentNullException(nameof(encoding));
+    //
+    //    var data = new List<byte>();
+    //    var buffer = new byte[1];
+    //    string? line = null;
+    //
+    //    token.ThrowIfCancellationRequested();
+    //
+    //    while (Read(buffer, 0, buffer.Length) > 0)
+    //    {
+    //        token.ThrowIfCancellationRequested();
+    //        data.Add(buffer[0]);
+    //        if ((char)buffer[0] != '\n')
+    //            continue;
+    //        line = encoding.GetString(data.ToArray()).Trim('\r', '\n');
+    //        break;
+    //    }
+    //
+    //    return line;
+    //}
 
-        var data = new List<byte>();
-        var buffer = new byte[1];
-        string line = null;
-
-        token.ThrowIfCancellationRequested();
-
-        while (Read(buffer, 0, buffer.Length) > 0)
-        {
-            token.ThrowIfCancellationRequested();
-            data.Add(buffer[0]);
-            if ((char)buffer[0] != '\n')
-                continue;
-            line = encoding.GetString(data.ToArray()).Trim('\r', '\n');
-            break;
-        }
-
-        return line;
-    }
-
-    private IEnumerable<string> ReadLines(CancellationToken token)
-    {
-        string line;
-        while ((line = ReadLine(Encoding, token)) != null)
-        {
-            yield return line;
-        }
-    }
+    //private IEnumerable<string?> ReadLines(CancellationToken token)
+    //{
+    //    string? line;
+    //    while ((line = ReadLine(Encoding, token)) != null)
+    //    {
+    //        yield return line;
+    //    }
+    //}
 
     public bool SocketDataAvailable() => (Socket?.Available ?? 0) > 0;
 
@@ -235,7 +238,7 @@ public class FtpControlStream : System.IO.Stream
             var response = new FtpResponse();
             var data = new List<string>();
 
-            foreach (string line in ReadLines(token))
+            foreach (string? line in await ReadLinesAsync(Encoding, token))
             {
                 token.ThrowIfCancellationRequested();
                 Logger?.LogDebug("{line}", line);
@@ -272,10 +275,7 @@ public class FtpControlStream : System.IO.Stream
         return socketStream;
     }
 
-    protected async Task ConnectStreamAsync(CancellationToken token)
-    {
-        await ConnectStreamAsync(Configuration.Host, Configuration.Port, token);
-    }
+    protected async Task ConnectStreamAsync(CancellationToken token) => await ConnectStreamAsync(Configuration.Host, Configuration.Port, token);
 
     protected async Task ConnectStreamAsync(string host, int port, CancellationToken token)
     {
@@ -329,7 +329,6 @@ public class FtpControlStream : System.IO.Stream
         {
             Logger?.LogDebug("Connecting");
             var ipEndpoint = await DnsResolver.ResolveAsync(host, port, Configuration.IpVersion, token);
-
             var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp)
             {
                 ReceiveTimeout = Configuration.TimeoutSeconds * 1000
@@ -342,7 +341,7 @@ public class FtpControlStream : System.IO.Stream
         }
         catch (Exception exception)
         {
-            Logger?.LogError(2, exception, "Could not to connect socket {host}:{port}", host, port);
+            Logger?.LogError(exception, "Could not to connect socket {host}:{port}", host, port);
             throw;
         }
     }
@@ -388,7 +387,7 @@ public class FtpControlStream : System.IO.Stream
         }
         catch (AuthenticationException authErr)
         {
-            Logger?.LogError(4, authErr, "Could not activate encryption for the connection");
+            Logger?.LogError(authErr, "Could not activate encryption for the connection");
             throw;
         }
     }
@@ -412,7 +411,7 @@ public class FtpControlStream : System.IO.Stream
         }
         catch (Exception exception)
         {
-            Logger?.LogError(5, exception, "Exception caught");
+            Logger?.LogError(exception, "Exception caught");
         }
         finally
         {
@@ -424,11 +423,27 @@ public class FtpControlStream : System.IO.Stream
     protected override void Dispose(bool disposing)
     {
         Logger?.LogTrace(IsDataConnection ? "Disposing of data connection" : "Disposing of control connection");
-
-        if (disposing)
-        {
-            Disconnect();
-        }
+        if (disposing) Disconnect();
         base.Dispose(disposing);
+    }
+
+    protected async Task<ICollection<string>> ReadLinesAsync(Encoding encoding, CancellationToken cancellationToken)
+    {
+        const int MaxReadSize = 1024;
+
+        if (encoding == null)
+            throw new ArgumentNullException(nameof(encoding));
+
+        int count;
+        var data = new ArrayBufferWriter<byte>();
+        do
+        {
+            var buffer = new byte[MaxReadSize];
+            count = await ReadAsync(new Memory<byte>(buffer), cancellationToken);
+            if (count == 0) break;
+            data.Write(buffer.AsSpan()[..count]);
+        } while (count == MaxReadSize);
+
+        return DirectoryProviderBase.SplitEncode(data.WrittenSpan, encoding);
     }
 }

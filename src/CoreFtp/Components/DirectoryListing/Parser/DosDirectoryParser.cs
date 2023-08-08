@@ -1,67 +1,59 @@
 ﻿using CoreFtp.Enum;
 using CoreFtp.Infrastructure;
 using CoreFtp.Infrastructure.Extensions;
-using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Text.RegularExpressions;
 
-namespace CoreFtp.Components.DirectoryListing.Parser
+namespace CoreFtp.Components.DirectoryListing.Parser;
+
+public sealed class DosDirectoryParser : IListDirectoryParser
 {
-    public sealed class DosDirectoryParser : IListDirectoryParser
+    private readonly Regex dosDirectoryRegex = new(@"(?<modify>\d+-\d+-\d+\s+\d+:\d+\w+)\s+<DIR>\s+(?<name>.*)$", RegexOptions.Compiled);
+    private readonly Regex dosFileRegex = new(@"(?<modify>\d+-\d+-\d+\s+\d+:\d+\w+)\s+(?<size>\d+)\s+(?<name>.*)$", RegexOptions.Compiled);
+
+    public bool Test(string testString)
     {
-        private readonly Regex dosDirectoryRegex = new Regex( @"(?<modify>\d+-\d+-\d+\s+\d+:\d+\w+)\s+<DIR>\s+(?<name>.*)$", RegexOptions.Compiled );
-        private readonly Regex dosFileRegex = new Regex( @"(?<modify>\d+-\d+-\d+\s+\d+:\d+\w+)\s+(?<size>\d+)\s+(?<name>.*)$", RegexOptions.Compiled );
-        private ILogger logger;
+        return dosDirectoryRegex.Match(testString).Success ||
+               dosFileRegex.Match(testString).Success;
+    }
 
-        public DosDirectoryParser( ILogger logger )
+    public FtpNodeInformation Parse(string line)
+    {
+        var directoryMatch = dosDirectoryRegex.Match(line);
+        if (directoryMatch.Success)
         {
-            this.logger = logger;
+            return ParseDirectory(directoryMatch);
         }
 
-        public bool Test( string testString )
+
+        var fileMatch = dosFileRegex.Match(line);
+        if (fileMatch.Success)
         {
-            return dosDirectoryRegex.Match( testString ).Success ||
-                   dosFileRegex.Match( testString ).Success;
+            return ParseFile(fileMatch);
         }
 
-        public FtpNodeInformation Parse( string line )
+        return null;
+    }
+
+    public static FtpNodeInformation ParseDirectory(Match match)
+    {
+        return new FtpNodeInformation
         {
-            var directoryMatch = dosDirectoryRegex.Match( line );
-            if ( directoryMatch.Success )
-            {
-                return ParseDirectory( directoryMatch );
-            }
+            NodeType = FtpNodeType.Directory,
+            Name = match.Groups["name"].Value,
+            DateModified = match.Groups["modify"].Value.ExtractFtpDate(DateTimeStyles.AssumeLocal),
+            Size = 0
+        };
+    }
 
-
-            var fileMatch = dosFileRegex.Match( line );
-            if ( fileMatch.Success )
-            {
-                return ParseFile( fileMatch );
-            }
-
-            return null;
-        }
-
-        public FtpNodeInformation ParseDirectory( Match match )
+    public static FtpNodeInformation ParseFile(Match match)
+    {
+        return new FtpNodeInformation
         {
-            return new FtpNodeInformation
-            {
-                NodeType = FtpNodeType.Directory,
-                Name = match.Groups[ "name" ].Value,
-                DateModified = match.Groups[ "modify" ].Value.ExtractFtpDate( DateTimeStyles.AssumeLocal ),
-                Size = 0
-            };
-        }
-
-        public FtpNodeInformation ParseFile( Match match )
-        {
-            return new FtpNodeInformation
-            {
-                NodeType = FtpNodeType.File,
-                Name = match.Groups[ "name" ].Value,
-                DateModified = match.Groups[ "modify" ].Value.ExtractFtpDate( DateTimeStyles.AssumeLocal ),
-                Size = match.Groups[ "size" ].Value.ParseOrDefault()
-            };
-        }
+            NodeType = FtpNodeType.File,
+            Name = match.Groups["name"].Value,
+            DateModified = match.Groups["modify"].Value.ExtractFtpDate(DateTimeStyles.AssumeLocal),
+            Size = match.Groups["size"].Value.ParseOrDefault()
+        };
     }
 }

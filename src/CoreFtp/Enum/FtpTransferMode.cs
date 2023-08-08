@@ -1,8 +1,7 @@
-﻿namespace CoreFtp.Enum
+﻿namespace CoreFtp.Enum;
+
+public enum FtpTransferMode
 {
-    public enum FtpTransferMode
-    {
-        Ascii = 'A',
-        Binary = 'I'
-    }
+    Ascii = 'A',
+    Binary = 'I'
 }

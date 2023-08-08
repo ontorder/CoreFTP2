@@ -1,9 +1,8 @@
-﻿namespace CoreFtp.Enum
+﻿namespace CoreFtp.Enum;
+
+public enum DirSort
 {
-    public enum DirSort
-    {
-        Alphabetical,
-        AlphabeticalReverse,
-        ModifiedTimestampReverse,
-    }
+    Alphabetical,
+    AlphabeticalReverse,
+    ModifiedTimestampReverse,
 }

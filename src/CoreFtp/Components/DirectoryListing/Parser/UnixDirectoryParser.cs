@@ -1,124 +1,109 @@
 ﻿using CoreFtp.Enum;
 using CoreFtp.Infrastructure;
-using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
 
-namespace CoreFtp.Components.DirectoryListing.Parser
+#nullable enable
+
+namespace CoreFtp.Components.DirectoryListing.Parser;
+
+public sealed class UnixDirectoryParser : IListDirectoryParser
 {
-    public sealed class UnixDirectoryParser : IListDirectoryParser
+    private readonly List<Regex> unixRegexList = new()
     {
-        private readonly List<Regex> unixRegexList = new List<Regex>()
+        new Regex(@"(?<permissions>.+)\s+" +
+                  @"(?<objectcount>\d+)\s+" +
+                  @"(?<user>.+)\s+" +
+                  @"(?<group>.+)\s+" +
+                  @"(?<size>\d+)\s+" +
+                  @"(?<date>\w+\s+\d+\s+\d+:\d+|\w+\s+\d+\s+\d+)\s+" +
+                  @"(?<name>.*)$", RegexOptions.Compiled),
+
+        // Non-standard StingRay FTP Server
+
+        new Regex(@"(?<permissions>.+)\s+" +
+                  @"(?<objectcount>\d+)\s+" +
+                  @"(?<size>\d+)\s+" +
+                  @"(?<date>\w+\s+\d+\s+\d+:\d+|\w+\s+\d+\s+\d+)\s+" +
+                  @"(?<name>.*)$", RegexOptions.Compiled)
+
+    };
+
+    public bool Test(string testString)
+    {
+        foreach (var expression in unixRegexList)
         {
-            new Regex(@"(?<permissions>.+)\s+" +
-                      @"(?<objectcount>\d+)\s+" +
-                      @"(?<user>.+)\s+" +
-                      @"(?<group>.+)\s+" +
-                      @"(?<size>\d+)\s+" +
-                      @"(?<date>\w+\s+\d+\s+\d+:\d+|\w+\s+\d+\s+\d+)\s+" +
-                      @"(?<name>.*)$", RegexOptions.Compiled),
+            if (expression.Match(testString).Success) return true;
+        }
 
-            // Non-standard StingRay FTP Server
+        return false;
+    }
 
-            new Regex(@"(?<permissions>.+)\s+" +
-                      @"(?<objectcount>\d+)\s+" +
-                      @"(?<size>\d+)\s+" +
-                      @"(?<date>\w+\s+\d+\s+\d+:\d+|\w+\s+\d+\s+\d+)\s+" +
-                      @"(?<name>.*)$", RegexOptions.Compiled)
+    public FtpNodeInformation Parse(string line)
+    {
+        var matches = Match.Empty;
+        foreach (var expression in unixRegexList)
+        {
+            if (!expression.Match(line).Success) continue;
+            matches = expression.Match(line);
+            break;
+        }
 
+        if (!matches.Success)
+            return null;
+
+        var node = new FtpNodeInformation
+        {
+            NodeType = DetermineNodeType(matches.Groups["permissions"]),
+            Name = DetermineName(matches.Groups["name"]),
+            DateModified = DetermineDateModified(matches.Groups["date"]),
+            Size = DetermineSize(matches.Groups["size"])
         };
 
-        private ILogger logger;
+        return node;
+    }
 
-        public UnixDirectoryParser(ILogger logger)
+    private static FtpNodeType DetermineNodeType(Capture permissions)
+    {
+        // No permissions means we can't determine the node type
+        if (permissions.Value.Length == 0)
+            throw new InvalidDataException("No permissions found");
+
+        return permissions.Value[0] switch
         {
-            this.logger = logger;
-        }
+            'd' => FtpNodeType.Directory,
+            '-' or 's' => FtpNodeType.File,
+            'l' => FtpNodeType.SymbolicLink,
+            _ => throw new InvalidDataException("Unexpected data format"),
+        };
+    }
 
-        public bool Test( string testString )
-        {
-            foreach (var expression in unixRegexList)
-            {
-                if (expression.Match(testString).Success) return true;
-            }
+    private static string DetermineName(Capture name)
+    {
+        if (name.Value.Length == 0)
+            throw new InvalidDataException("No name found");
 
-            return false;
-        }
+        return name.Value;
+    }
 
-        public FtpNodeInformation Parse( string line )
-        {
-            var matches = Match.Empty;
-            foreach (var expression in unixRegexList)
-            {
-                if (!expression.Match(line).Success) continue;
-                matches = expression.Match(line);
-                break;
-            }
+    private static DateTime DetermineDateModified(Capture name)
+    {
+        return name.Value.Length == 0
+            ? DateTime.MinValue
+            : name.Value.ExtractFtpDate(DateTimeStyles.AssumeLocal);
+    }
 
-            if ( !matches.Success )
-                return null;
-
-            var node = new FtpNodeInformation
-            {
-                NodeType = DetermineNodeType( matches.Groups[ "permissions" ] ),
-                Name = DetermineName( matches.Groups[ "name" ] ),
-                DateModified = DetermineDateModified( matches.Groups[ "date" ] ),
-                Size = DetermineSize( matches.Groups[ "size" ] )
-            };
+    private static long DetermineSize(Capture sizeGroup)
+    {
+        if (sizeGroup.Value.Length == 0)
+            return 0;
 
 
-            return node;
-        }
-
-
-        private FtpNodeType DetermineNodeType( Capture permissions )
-        {
-            // No permissions means we can't determine the node type
-            if ( permissions.Value.Length == 0 )
-                throw new InvalidDataException( "No permissions found" );
-
-            switch ( permissions.Value[ 0 ] )
-            {
-                case 'd':
-                    return FtpNodeType.Directory;
-                case '-':
-                case 's':
-                    return FtpNodeType.File;
-                case 'l':
-                    return FtpNodeType.SymbolicLink;
-                default:
-                    throw new InvalidDataException( "Unexpected data format" );
-            }
-        }
-
-        private string DetermineName( Capture name )
-        {
-            if ( name.Value.Length == 0 )
-                throw new InvalidDataException( "No name found" );
-
-            return name.Value;
-        }
-
-        private DateTime DetermineDateModified( Capture name )
-        {
-            return name.Value.Length == 0
-                ? DateTime.MinValue
-                : name.Value.ExtractFtpDate( DateTimeStyles.AssumeLocal );
-        }
-
-        private long DetermineSize( Capture sizeGroup )
-        {
-            if ( sizeGroup.Value.Length == 0 )
-                return 0;
-
-            long size;
-
-            return long.TryParse( sizeGroup.Value, out size )
-                ? size
-                : 0;
-        }
+        return long.TryParse(sizeGroup.Value, out long size)
+            ? size
+            : 0;
     }
 }

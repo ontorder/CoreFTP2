@@ -1,9 +1,8 @@
-﻿namespace CoreFtp.Enum
+﻿namespace CoreFtp.Enum;
+
+public enum FtpEncryption
 {
-    public enum FtpEncryption
-    {
-        None,
-        Implicit,
-        Explicit
-    }
+    None,
+    Implicit,
+    Explicit
 }

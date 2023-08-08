@@ -1,28 +1,26 @@
-﻿namespace CoreFtp.Infrastructure
+﻿namespace CoreFtp.Infrastructure;
+
+#nullable enable
+
+using Enum;
+
+public sealed class FtpResponse
 {
-    using Enum;
-
-    public sealed class FtpResponse
+    public string[] Data { get; set; }
+    public static FtpResponse EmptyResponse = new()
     {
-        public FtpStatusCode FtpStatusCode { get; set; }
-
-        public bool IsSuccess
+        ResponseMessage = "No response was received",
+        FtpStatusCode = FtpStatusCode.Undefined
+    };
+    public FtpStatusCode FtpStatusCode { get; set; }
+    public bool IsSuccess
+    {
+        get
         {
-            get
-            {
-                int statusCode = (int)FtpStatusCode;
-                return statusCode >= 100 && statusCode < 400;
-            }
+            int statusCode = (int)FtpStatusCode;
+            return statusCode >= 100 && statusCode < 400;
         }
-
-        public string ResponseMessage { get; set; }
-        public string[] Data { get; set; }
-        public string Request { get; set; }
-
-        public static FtpResponse EmptyResponse = new FtpResponse
-        {
-            ResponseMessage = "No response was received",
-            FtpStatusCode = FtpStatusCode.Undefined
-        };
     }
+    public string Request { get; set; }
+    public string ResponseMessage { get; set; }
 }

@@ -1,20 +1,19 @@
-﻿namespace CoreFtp.Infrastructure
+﻿namespace CoreFtp.Infrastructure;
+
+using Enum;
+using Extensions;
+
+public sealed class FtpCommandEnvelope
 {
-    using Enum;
-    using Extensions;
+    public FtpCommand FtpCommand { get; set; }
+    public string Data { get; set; }
 
-    public sealed class FtpCommandEnvelope
+    public string GetCommandString()
     {
-        public FtpCommand FtpCommand { get; set; }
-        public string Data { get; set; }
+        string command = FtpCommand.ToString();
 
-        public string GetCommandString()
-        {
-            string command = FtpCommand.ToString();
-
-            return Data.IsNullOrEmpty()
-                ? command
-                : $"{command} {Data}";
-        }
+        return Data.IsNullOrEmpty()
+            ? command
+            : $"{command} {Data}";
     }
 }
