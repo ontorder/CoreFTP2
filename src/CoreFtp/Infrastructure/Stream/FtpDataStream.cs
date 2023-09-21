@@ -12,7 +12,7 @@ public sealed class FtpDataStream : System.IO.Stream
 {
     private readonly FtpClient _client;
     private readonly System.IO.Stream _encapsulatedStream;
-    private readonly ILogger _logger;
+    private readonly ILogger? _logger;
 
     public override bool CanRead => _encapsulatedStream.CanRead;
     public override bool CanSeek => _encapsulatedStream.CanSeek;
@@ -21,11 +21,11 @@ public sealed class FtpDataStream : System.IO.Stream
 
     public override long Position
     {
-        get { return _encapsulatedStream.Position; }
-        set { _encapsulatedStream.Position = value; }
+        get => _encapsulatedStream.Position;
+        set => _encapsulatedStream.Position = value;
     }
 
-    public FtpDataStream(System.IO.Stream encapsulatedStream, FtpClient client, ILogger logger)
+    public FtpDataStream(System.IO.Stream encapsulatedStream, FtpClient client, ILogger? logger)
     {
         _logger = logger;
         _logger?.LogDebug("[FtpDataStream] Constructing");

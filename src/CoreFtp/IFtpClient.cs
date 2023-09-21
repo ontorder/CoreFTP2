@@ -20,7 +20,6 @@ public interface IFtpClient : IDisposable
 
     Task ChangeWorkingDirectoryAsync(string directory, CancellationToken cancellationToken = default);
     Task CloseFileDataStreamAsync(CancellationToken ctsToken = default);
-    void Configure(FtpClientConfiguration configuration);
     Task CreateDirectoryAsync(string directory, CancellationToken cancellationToken = default);
     Task DeleteDirectoryAsync(string directory, CancellationToken cancellationToken = default);
     Task DeleteFileAsync(string fileName, CancellationToken cancellationToken = default);

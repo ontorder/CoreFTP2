@@ -40,7 +40,7 @@ public class FtpControlStream : System.IO.Stream
     protected readonly SemaphoreSlim Semaphore = new(1, 1);
     protected Socket? Socket;
     protected int SocketPollInterval { get; } = 15000;
-    protected SslStream SslStream { get; set; }
+    protected SslStream? SslStream { get; set; }
 
     internal bool IsDataConnection { get; set; }
 
@@ -246,7 +246,7 @@ public class FtpControlStream : System.IO.Stream
 
                 Match match;
 
-                if (!(match = Regex.Match(line, "^(?<statusCode>[0-9]{3}) (?<message>.*)$")).Success)
+                if (false == (match = Regex.Match(line, "^(?<statusCode>[0-9]{3}) (?<message>.*)$")).Success)
                     continue;
                 Logger?.LogTrace("Finished receiving message");
                 response.FtpStatusCode = match.Groups["statusCode"].Value.ToStatusCode();
@@ -284,8 +284,8 @@ public class FtpControlStream : System.IO.Stream
             await Semaphore.WaitAsync(token);
             Logger?.LogDebug("Connecting stream on {host}:{port}", host, port);
             Socket = await ConnectSocketAsync(host, port, token);
-
             BaseStream = new NetworkStream(Socket);
+            ResetTimeouts();
             LastActivity = DateTime.Now;
 
             if (IsDataConnection)
@@ -392,13 +392,8 @@ public class FtpControlStream : System.IO.Stream
         }
     }
 
-    private bool OnValidateCertificate(X509Certificate certificate, X509Chain chain, SslPolicyErrors errors)
-    {
-        if (Configuration.IgnoreCertificateErrors)
-            return true;
-
-        return errors == SslPolicyErrors.None;
-    }
+    private bool OnValidateCertificate(X509Certificate _, X509Chain __, SslPolicyErrors errors)
+        => Configuration.IgnoreCertificateErrors || errors == SslPolicyErrors.None;
 
     public void Disconnect()
     {
