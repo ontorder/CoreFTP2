@@ -36,8 +36,6 @@ public sealed class FtpClient : IFtpClient
     private IDirectoryProvider _directoryProvider;
     private ILogger _logger;
 
-    public FtpClient() { }
-
     public FtpClient(FtpClientConfiguration configuration) => Configure(configuration);
 
     public void Configure(FtpClientConfiguration configuration)
@@ -83,6 +81,11 @@ public sealed class FtpClient : IFtpClient
         if (!response.IsSuccess)
             throw new FtpException(response.ResponseMessage);
 
+        if (pwdResponse.ResponseMessage.Contains(':') == false)
+        {
+            _logger.LogWarning("[FtpClient] change directory failed? '{resp}'", pwdResponse.ResponseMessage);
+            throw new Exception($"ftp response '{pwdResponse.ResponseMessage}' has no ':'");
+        }
         WorkingDirectory = pwdResponse.ResponseMessage.Split('"')[1];
     }
 

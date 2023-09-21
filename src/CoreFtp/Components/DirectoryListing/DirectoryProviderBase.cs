@@ -67,6 +67,7 @@ public abstract class DirectoryProviderBase : IDirectoryProvider
     }
 
     // TODO use Pipe
+    // https://learn.microsoft.com/en-us/dotnet/standard/io/pipelines
     protected async IAsyncEnumerable<string> ReadLineAsyncEnum(Encoding encoding, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         const int MaxReadSize = 512;
