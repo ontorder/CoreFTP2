@@ -160,7 +160,7 @@ public class FtpControlStream : System.IO.Stream
     //    {
     //        token.ThrowIfCancellationRequested();
     //        data.Add(buffer[0]);
-    //        if ((char)buffer[0] != '\n')
+    //        if ((,r)buffer[0] != '\n')
     //            continue;
     //        line = encoding.GetString(data.ToArray()).Trim('\r', '\n');
     //        break;
