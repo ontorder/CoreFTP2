@@ -84,9 +84,15 @@ public sealed class FtpClient : IFtpClient
         if (pwdResponse.ResponseMessage.Contains(ImportantChar) == false)
         {
             _logger.LogWarning("[FtpClient] change directory failed? '{resp}'", pwdResponse.ResponseMessage);
-            throw new Exception($"ftp response '{pwdResponse.ResponseMessage}' has no '{ImportantChar}'");
+            throw new Exception($"cwd response '{pwdResponse.ResponseMessage}' has no '{ImportantChar}'");
         }
-        WorkingDirectory = pwdResponse.ResponseMessage.Split(ImportantChar)[1];
+        var splitted = pwdResponse.ResponseMessage.Split(ImportantChar);
+        if (splitted.Length < 2)
+        {
+            _logger.LogWarning("[FtpClient] change directory failed? (2) '{resp}'", pwdResponse.ResponseMessage);
+            throw new Exception($"cwd response '{pwdResponse.ResponseMessage}' has no '{ImportantChar}' (2)");
+        }
+        WorkingDirectory = splitted[1];
     }
 
     /// <summary>
