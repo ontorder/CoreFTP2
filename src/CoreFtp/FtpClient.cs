@@ -69,7 +69,7 @@ public sealed class FtpClient : IFtpClient
         var cwdResponse = await ControlStream.SendCommandReadAsync(cwdCmd, cancellationToken);
 
         if (cwdResponse.FtpStatusCode != FtpStatusCode.FileActionOK)
-            _logger?.LogWarning("[CoreFtp] cwd response was not 250: {msg}", cwdResponse.ResponseMessage);
+            _logger?.LogWarning("[CoreFtp] cwd response was not 250: '{code} {msg}'", (int)cwdResponse.FtpStatusCode, cwdResponse.ResponseMessage);
 
         if (cwdResponse.IsSuccess == false)
             throw new FtpException(cwdResponse.ResponseMessage);
@@ -77,7 +77,7 @@ public sealed class FtpClient : IFtpClient
         var pwdResponse = await ControlStream.SendCommandReadAsync(FtpCommand.PWD, cancellationToken);
 
         if (pwdResponse.FtpStatusCode != FtpStatusCode.PathnameCreated)
-            _logger?.LogWarning("[CoreFtp] pwd response was not 257", pwdResponse.ResponseMessage);
+            _logger?.LogWarning("[CoreFtp] pwd response was not 257: '{code} {msg}'", (int)pwdResponse.FtpStatusCode, pwdResponse.ResponseMessage);
 
         if (pwdResponse.IsSuccess == false)
             throw new FtpException(pwdResponse.ResponseMessage);
@@ -86,7 +86,8 @@ public sealed class FtpClient : IFtpClient
 
         if (pwdResponse.ResponseMessage.Contains(TrimChar) == false)
         {
-            _logger?.LogWarning("[CoreFtp] pwd failed? '{resp}'\ncwd: '{cwd}'", pwdResponse.ResponseMessage, cwdResponse.ResponseMessage);
+            _logger?.LogWarning("[CoreFtp] pwd failed? '{code} {resp}'\ncwd: '{code} {cwd}'",
+                (int)pwdResponse.FtpStatusCode, pwdResponse.ResponseMessage, (int)cwdResponse.FtpStatusCode, cwdResponse.ResponseMessage);
             throw new Exception($"pwd response '{pwdResponse.ResponseMessage}' has no '{TrimChar}'\n'");
         }
         var splitted = pwdResponse.ResponseMessage.Split(TrimChar);
@@ -305,13 +306,13 @@ public sealed class FtpClient : IFtpClient
         var userResponse = await ControlStream.SendCommandReadAsync(userCmd, cancellationToken);
         await BailIfResponseNotAsync(userResponse, cancellationToken, FtpStatusCode.SendUserCommand, FtpStatusCode.SendPasswordCommand, FtpStatusCode.LoggedInProceed);
         if (userResponse.FtpStatusCode != FtpStatusCode.SendPasswordCommand)
-            _logger?.LogWarning("[CoreFtp] user response was not 331: '{msg}'", userResponse.ResponseMessage);
+            _logger?.LogWarning("[CoreFtp] user response was not 331: '{code} {msg}'", (int)userResponse.FtpStatusCode, userResponse.ResponseMessage);
 
         var passCmd = new FtpCommandEnvelope(FtpCommand.PASS, username != Constants.ANONYMOUS_USER ? Configuration.Password : string.Empty);
         var passResponse = await ControlStream.SendCommandReadAsync(passCmd, cancellationToken);
         await BailIfResponseNotAsync(passResponse, cancellationToken, FtpStatusCode.LoggedInProceed);
         if (userResponse.FtpStatusCode != FtpStatusCode.NeedLoginAccount)
-            _logger?.LogWarning("[CoreFtp] user response was not 230: '{msg}'", userResponse.ResponseMessage);
+            _logger?.LogWarning("[CoreFtp] pass response was not 230: '{code} {msg}'", (int)passResponse.FtpStatusCode, passResponse.ResponseMessage);
 
         IsAuthenticated = true;
 
@@ -437,7 +438,7 @@ public sealed class FtpClient : IFtpClient
         var response = await ControlStream.SendCommandReadAsync(typeCmd);
 
         if (response.FtpStatusCode != FtpStatusCode.CommandOK)
-            _logger?.LogWarning("[CoreFtp] type response was not 200: {msg}", response.ResponseMessage);
+            _logger?.LogWarning("[CoreFtp] type response was not 200: '{code} {msg}'", (int)response.FtpStatusCode, response.ResponseMessage);
 
         if (response.IsSuccess == false)
             throw new FtpException(response.ResponseMessage);
@@ -490,7 +491,7 @@ public sealed class FtpClient : IFtpClient
         var response = await ControlStream.SendCommandReadAsync(FtpCommand.FEAT, cancellationToken);
 
         if (response.FtpStatusCode != FtpStatusCode.EndFeats)
-            _logger?.LogWarning("[CoreFtp] feat response was not 211: {msg}", response.ResponseMessage);
+            _logger?.LogWarning("[CoreFtp] feat response was not 211: '{code} {msg}'", (int)response.FtpStatusCode, response.ResponseMessage);
 
         if (response.FtpStatusCode == FtpStatusCode.CommandSyntaxError || response.FtpStatusCode == FtpStatusCode.CommandNotImplemented)
             return Enumerable.Empty<string>();
