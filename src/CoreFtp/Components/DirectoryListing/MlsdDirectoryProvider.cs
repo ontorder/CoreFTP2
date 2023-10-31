@@ -100,7 +100,7 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
             if (Stream == null)
                 throw new FtpException("Could not establish a data connection");
 
-            var result = await FtpClient.ControlStream.SendCommandAsync(FtpCommand.MLSD, cancellationToken);
+            var result = await FtpClient.ControlStream.SendCommandReadAsync(FtpCommand.MLSD, cancellationToken);
             if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData) && (result.FtpStatusCode != FtpStatusCode.ClosingData))
                 throw new FtpException("Could not retrieve directory listing " + result.ResponseMessage);
 
@@ -135,7 +135,7 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
         try
         {
             Stream = await FtpClient.ConnectDataStreamAsync(cancellationToken);
-            var result = await FtpClient.ControlStream.SendCommandAsync(new FtpCommandEnvelope(FtpCommand.MLSD), cancellationToken);
+            var result = await FtpClient.ControlStream.SendCommandReadAsync(new FtpCommandEnvelope(FtpCommand.MLSD), cancellationToken);
 
             if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData))
                 throw new FtpException("Could not retrieve directory listing: " + result.ResponseMessage);

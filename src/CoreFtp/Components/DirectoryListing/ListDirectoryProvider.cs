@@ -112,7 +112,7 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
                 _ => String.Empty,
             };
             var listCmd = new FtpCommandEnvelope(FtpCommand.LIST, arguments);
-            var result = await FtpClient.ControlStream.SendCommandAsync(listCmd, cancellationToken);
+            var result = await FtpClient.ControlStream.SendCommandReadAsync(listCmd, cancellationToken);
 
             if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData))
                 throw new FtpException("Could not retrieve directory listing " + result.ResponseMessage);
@@ -161,7 +161,7 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
                 _ => String.Empty,
             };
             var listCmd = new FtpCommandEnvelope(FtpCommand.LIST, arguments);
-            var result = await FtpClient.ControlStream.SendCommandAsync(listCmd, cancellationToken);
+            var result = await FtpClient.ControlStream.SendCommandReadAsync(listCmd, cancellationToken);
 
             if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData))
                 throw new FtpException("Could not retrieve directory listing: " + result.ResponseMessage);

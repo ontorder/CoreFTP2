@@ -138,7 +138,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
 
     public async Task<FtpResponse> GetResponseAsync(CancellationToken token = default)
     {
-        Logger?.LogTrace("Getting Response");
+        //Logger?.LogTrace("Getting Response");
 
         if (Encoding == null)
             throw new ArgumentNullException(nameof(Encoding));
@@ -161,7 +161,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
                 Match match = FtpRegex.Match(line);
                 if (false == match.Success)
                     continue;
-                Logger?.LogTrace("Finished receiving message");
+                //Logger?.LogTrace("Finished receiving message");
                 response.FtpStatusCode = match.Groups["statusCode"].Value.ToStatusCode();
                 response.ResponseMessage = match.Groups["message"].Value;
                 break;
@@ -189,21 +189,21 @@ public sealed partial class FtpControlStream : System.IO.Stream
     }
 
     public override int Read(byte[] buffer, int offset, int count)
-        => throw new Exception("use async");
+        => NetworkStream.Read(buffer, offset, count);
 
     public override long Seek(long offset, SeekOrigin origin)
-        => throw new InvalidOperationException();
+        => NetworkStream.Seek(offset, origin);
 
-    public async Task<FtpResponse> SendCommandAsync(FtpCommand command, CancellationToken token = default)
-        => await SendCommandAsync(new FtpCommandEnvelope(command), token);
+    public async Task<FtpResponse> SendCommandReadAsync(FtpCommand command, CancellationToken token = default)
+        => await SendCommandReadAsync(new FtpCommandEnvelope(command), token);
 
-    public async Task<FtpResponse> SendCommandAsync(FtpCommandEnvelope envelope, CancellationToken token = default)
+    public async Task<FtpResponse> SendCommandReadAsync(FtpCommandEnvelope envelope, CancellationToken token = default)
     {
         string commandString = envelope.GetCommandString();
-        return await SendCommandAsync(commandString, token);
+        return await SendReadAsync(commandString, token);
     }
 
-    public async Task<FtpResponse> SendCommandAsync(string command, CancellationToken token = default)
+    public async Task<FtpResponse> SendReadAsync(string command, CancellationToken token = default)
     {
         await Semaphore.WaitAsync(token);
 
@@ -367,7 +367,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
             {
                 ReceiveTimeout = Configuration.TimeoutSeconds * 1000
             };
-            socket.Connect(ipEndpoint);
+            await socket.ConnectAsync(ipEndpoint);
             socket.LingerState = new LingerOption(true, 0);
             return socket;
         }
@@ -388,7 +388,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
     protected async Task EncryptExplicitly(CancellationToken token)
     {
         Logger?.LogDebug("Encrypting explicitly");
-        var response = await SendCommandAsync("AUTH TLS", token);
+        var response = await SendReadAsync("AUTH TLS", token);
 
         if (!response.IsSuccess)
             throw new InvalidOperationException();
