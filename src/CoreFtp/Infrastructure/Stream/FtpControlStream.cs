@@ -212,7 +212,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
             if (SocketDataAvailable())
             {
                 var staleDataResult = await GetResponseAsync(token);
-                Logger?.LogWarning("[CoreFtp] Stale data on socket {responseMessage}", staleDataResult.ResponseMessage);
+                Logger?.LogWarning("[CoreFtp] Stale data on socket: {responseMessage}", staleDataResult.ResponseMessage);
             }
 
             string commandToPrint = command.StartsWith(FtpCommand.PASS.ToString())
