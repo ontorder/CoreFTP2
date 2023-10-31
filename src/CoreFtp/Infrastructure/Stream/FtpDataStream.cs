@@ -82,11 +82,7 @@ public sealed class FtpDataStream : System.IO.Stream
         _encapsulatedStream.Flush();
     }
 
-    public override int Read(byte[] buffer, int offset, int count)
-    {
-        _logger?.LogDebug("[FtpDataStream] Read");
-        return _encapsulatedStream.Read(buffer, offset, count);
-    }
+    public override int Read(byte[] buffer, int offset, int count) => throw new Exception("use async");
 
     public override long Seek(long offset, SeekOrigin origin)
     {
@@ -100,9 +96,5 @@ public sealed class FtpDataStream : System.IO.Stream
         _encapsulatedStream.SetLength(value);
     }
 
-    public override void Write(byte[] buffer, int offset, int count)
-    {
-        _logger?.LogDebug("[FtpDataStream] Write");
-        _encapsulatedStream.Write(buffer, offset, count);
-    }
+    public override void Write(byte[] buffer, int offset, int count) => throw new Exception("use async");
 }

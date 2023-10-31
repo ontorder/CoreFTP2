@@ -95,7 +95,8 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
     /// </summary>
     /// <param name="ftpNodeType"></param>
     /// <returns></returns>
-    private async Task<ReadOnlyCollection<FtpNodeInformation>> ListNodesAsync(FtpNodeType? ftpNodeType = null, DirSort? sortBy = null, CancellationToken cancellationToken = default)
+    private async Task<ReadOnlyCollection<FtpNodeInformation>> ListNodesAsync(FtpNodeType? ftpNodeType = null, DirSort? sortBy = null,
+        CancellationToken cancellationToken = default)
     {
         EnsureLoggedIn();
         Logger?.LogDebug("[ListDirectoryProvider] Listing {ftpNodeType}", ftpNodeType);
@@ -110,11 +111,8 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
                 DirSort.ModifiedTimestampReverse => "-t",
                 _ => String.Empty,
             };
-            var result = await FtpClient.ControlStream.SendCommandAsync(new FtpCommandEnvelope
-            {
-                FtpCommand = FtpCommand.LIST,
-                Data = arguments
-            }, cancellationToken);
+            var listCmd = new FtpCommandEnvelope(FtpCommand.LIST, arguments);
+            var result = await FtpClient.ControlStream.SendCommandAsync(listCmd, cancellationToken);
 
             if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData))
                 throw new FtpException("Could not retrieve directory listing " + result.ResponseMessage);
@@ -162,11 +160,8 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
                 DirSort.ModifiedTimestampReverse => "-t",
                 _ => String.Empty,
             };
-            var result = await FtpClient.ControlStream.SendCommandAsync(new FtpCommandEnvelope
-            {
-                FtpCommand = FtpCommand.LIST,
-                Data = arguments
-            }, cancellationToken);
+            var listCmd = new FtpCommandEnvelope(FtpCommand.LIST, arguments);
+            var result = await FtpClient.ControlStream.SendCommandAsync(listCmd, cancellationToken);
 
             if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData))
                 throw new FtpException("Could not retrieve directory listing: " + result.ResponseMessage);

@@ -135,11 +135,7 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
         try
         {
             Stream = await FtpClient.ConnectDataStreamAsync(cancellationToken);
-            var result = await FtpClient.ControlStream.SendCommandAsync(new FtpCommandEnvelope
-            {
-                FtpCommand = FtpCommand.MLSD,
-                Data = null
-            }, cancellationToken);
+            var result = await FtpClient.ControlStream.SendCommandAsync(new FtpCommandEnvelope(FtpCommand.MLSD), cancellationToken);
 
             if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData))
                 throw new FtpException("Could not retrieve directory listing: " + result.ResponseMessage);
