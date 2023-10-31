@@ -33,7 +33,7 @@ public abstract class DirectoryProviderBase : IDirectoryProvider
     protected async Task<IEnumerable<string>> RetrieveDirectoryListingAsync(CancellationToken cancellationToken)
     {
         var lines = await ReadLinesAsync(FtpClient.ControlStream.Encoding, cancellationToken);
-        Logger?.LogDebug("{lines}", lines);
+        Logger?.LogDebug("[CoreFtp] {lines}", lines);
         return lines;
     }
 
@@ -41,7 +41,7 @@ public abstract class DirectoryProviderBase : IDirectoryProvider
     {
         await foreach (string line in ReadLineAsyncEnum(FtpClient.ControlStream.Encoding, cancellationToken))
         {
-            Logger?.LogDebug("{line}", line);
+            Logger?.LogDebug("[CoreFtp] {line}", line);
             yield return line;
         }
     }

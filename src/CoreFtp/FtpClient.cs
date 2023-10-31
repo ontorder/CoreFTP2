@@ -455,7 +455,7 @@ public sealed class FtpClient : IFtpClient
     /// <returns></returns>
     public void Dispose()
     {
-        _logger?.LogDebug("Disposing of FtpClient");
+        _logger?.LogDebug("[CoreFtp] Disposing of FtpClient");
         Task.WaitAny(LogOutAsync(default));
         ControlStream?.Dispose();
         DataSocketSemaphore?.Dispose();
@@ -490,7 +490,7 @@ public sealed class FtpClient : IFtpClient
         var response = await ControlStream.SendCommandReadAsync(FtpCommand.FEAT, cancellationToken);
 
         if (response.FtpStatusCode != FtpStatusCode.EndFeats)
-            _logger?.LogWarning("feat response was not 211: {msg}", response.ResponseMessage);
+            _logger?.LogWarning("[CoreFtp] feat response was not 211: {msg}", response.ResponseMessage);
 
         if (response.FtpStatusCode == FtpStatusCode.CommandSyntaxError || response.FtpStatusCode == FtpStatusCode.CommandNotImplemented)
             return Enumerable.Empty<string>();
@@ -623,7 +623,7 @@ public sealed class FtpClient : IFtpClient
         if (codes.Any(x => x == response.FtpStatusCode))
             return;
 
-        _logger?.LogDebug("Bailing due to response codes being {ftpStatusCode}, which is not one of: [{codes}]",
+        _logger?.LogDebug("[CoreFtp] Bailing due to response codes being {ftpStatusCode}, which is not one of: [{codes}]",
             response.FtpStatusCode, string.Join(",", codes));
 
         await LogOutAsync(cancellationToken);

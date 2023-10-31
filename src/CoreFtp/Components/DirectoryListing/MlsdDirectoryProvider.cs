@@ -90,7 +90,7 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
                 ? "file"
                 : "dir";
 
-        Logger?.LogDebug("[MlsdDirectoryProvider] Listing {ftpNodeType}", ftpNodeType);
+        Logger?.LogDebug("[CoreFtp] MlsdDirectoryProvider: Listing {ftpNodeType}", ftpNodeType);
 
         EnsureLoggedIn();
 
@@ -130,7 +130,7 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
                 : "dir";
 
         EnsureLoggedIn();
-        Logger?.LogDebug("[MlsdDirectoryProvider] Listing {ftpNodeType}", ftpNodeType);
+        Logger?.LogDebug("[CoreFtp} MlsdDirectoryProvider: Listing {ftpNodeType}", ftpNodeType);
 
         try
         {

@@ -57,7 +57,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
 
                 if (LastActivity.HasIntervalExpired(DateTime.Now, SocketPollInterval))
                 {
-                    Logger?.LogDebug("Polling connection");
+                    Logger?.LogDebug("[CoreFtp] Polling connection");
                     if (Socket.Poll(500000, SelectMode.SelectRead) && Socket.Available == 0)
                     {
                         Disconnect();
@@ -68,13 +68,13 @@ public sealed partial class FtpControlStream : System.IO.Stream
             catch (SocketException socketException)
             {
                 Disconnect();
-                Logger?.LogError(socketException, "FtpSocketStream.IsConnected: Caught and discarded SocketException while testing for connectivity");
+                Logger?.LogError(socketException, "[CoreFtp] FtpSocketStream.IsConnected: Caught and discarded SocketException while testing for connectivity");
                 return false;
             }
             catch (IOException ioException)
             {
                 Disconnect();
-                Logger?.LogError(ioException, $"FtpSocketStream.IsConnected: Caught and discarded IOException while testing for connectivity");
+                Logger?.LogError(ioException, "[CoreFtp] FtpSocketStream.IsConnected: Caught and discarded IOException while testing for connectivity");
                 return false;
             }
 
@@ -86,7 +86,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
 
     public FtpControlStream(FtpClientConfiguration configuration, IDnsResolver dnsResolver)
     {
-        Logger?.LogDebug("Constructing new FtpSocketStream");
+        Logger?.LogDebug("[CoreFtp] Constructing new FtpSocketStream");
         Configuration = configuration;
         DnsResolver = dnsResolver;
     }
@@ -110,7 +110,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
 
     public void Disconnect()
     {
-        Logger?.LogTrace("Disconnecting");
+        Logger?.LogTrace("[CoreFtp] Disconnecting");
         try
         {
             BaseStream?.Dispose();
@@ -119,7 +119,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
         }
         catch (Exception exception)
         {
-            Logger?.LogError(exception, "Exception caught");
+            Logger?.LogError(exception, "[CoreFtp] Exception caught");
         }
         finally
         {
@@ -138,7 +138,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
 
     public async Task<FtpResponse> GetResponseAsync(CancellationToken token = default)
     {
-        //Logger?.LogTrace("Getting Response");
+        //Logger?.LogTrace("[CoreFtp] Getting Response");
 
         if (Encoding == null)
             throw new ArgumentNullException(nameof(Encoding));
@@ -155,13 +155,13 @@ public sealed partial class FtpControlStream : System.IO.Stream
             foreach (string? line in await ReadLinesAsync(Encoding, token))
             {
                 token.ThrowIfCancellationRequested();
-                Logger?.LogDebug("{line}", line);
+                Logger?.LogDebug("[CoreFtp] {line}", line);
                 data.Add(line);
 
                 Match match = FtpRegex.Match(line);
                 if (false == match.Success)
                     continue;
-                //Logger?.LogTrace("Finished receiving message");
+                //Logger?.LogTrace("[CoreFtp] Finished receiving message");
                 response.FtpStatusCode = match.Groups["statusCode"].Value.ToStatusCode();
                 response.ResponseMessage = match.Groups["message"].Value;
                 break;
@@ -177,7 +177,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
 
     public async Task<System.IO.Stream> OpenDataStreamAsync(string host, int port, CancellationToken token)
     {
-        Logger?.LogDebug("[FtpSocketStream] Opening datastream");
+        Logger?.LogDebug("[CoreFtp] FtpSocketStream: Opening datastream");
         var socketStream = new FtpControlStream(Configuration, DnsResolver) { Logger = Logger, IsDataConnection = true };
         await socketStream.ConnectStreamAsync(host, port, token);
 
@@ -212,7 +212,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
             if (SocketDataAvailable())
             {
                 var staleDataResult = await GetResponseAsync(token);
-                Logger?.LogWarning("Stale data on socket {responseMessage}", staleDataResult.ResponseMessage);
+                Logger?.LogWarning("[CoreFtp] Stale data on socket {responseMessage}", staleDataResult.ResponseMessage);
             }
 
             string commandToPrint = command.StartsWith(FtpCommand.PASS.ToString())
@@ -304,7 +304,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
         }
         catch (AuthenticationException authErr)
         {
-            Logger?.LogError(authErr, "Could not activate encryption for the connection");
+            Logger?.LogError(authErr, "[CoreFtp] Could not activate encryption for the connection");
             throw;
         }
     }
@@ -316,7 +316,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
         try
         {
             await Semaphore.WaitAsync(token);
-            Logger?.LogDebug("Connecting stream on {host}:{port}", host, port);
+            Logger?.LogDebug("[CoreFtp] Connecting stream on {host}:{port}", host, port);
             Socket = await ConnectSocketAsync(host, port, token);
             BaseStream = new NetworkStream(Socket);
             ResetTimeouts();
@@ -339,7 +339,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
                 }
             }
 
-            Logger?.LogDebug("Waiting for welcome message");
+            Logger?.LogDebug("[CoreFtp] Waiting for welcome message");
 
             while (true)
             {
@@ -361,7 +361,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
     {
         try
         {
-            Logger?.LogDebug("Connecting");
+            Logger?.LogDebug("[CoreFtp] Connecting");
             var ipEndpoint = await DnsResolver.ResolveAsync(host, port, Configuration.IpVersion, token);
             var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp)
             {
@@ -373,21 +373,21 @@ public sealed partial class FtpControlStream : System.IO.Stream
         }
         catch (Exception socketErr)
         {
-            Logger?.LogError(socketErr, "Could not to connect socket {host}:{port}", host, port);
+            Logger?.LogError(socketErr, "[CoreFtp] Could not to connect socket {host}:{port}", host, port);
             throw;
         }
     }
 
     protected override void Dispose(bool disposing)
     {
-        Logger?.LogTrace(IsDataConnection ? "Disposing of data connection" : "Disposing of control connection");
+        Logger?.LogTrace("[CoreFtp] {msg}", IsDataConnection ? "Disposing of data connection" : "Disposing of control connection");
         if (disposing) Disconnect();
         base.Dispose(disposing);
     }
 
     protected async Task EncryptExplicitly(CancellationToken token)
     {
-        Logger?.LogDebug("Encrypting explicitly");
+        Logger?.LogDebug("[CoreFtp] Encrypting explicitly");
         var response = await SendReadAsync("AUTH TLS", token);
 
         if (!response.IsSuccess)
@@ -398,7 +398,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
 
     protected async Task EncryptImplicitly(CancellationToken token)
     {
-        Logger?.LogDebug("Encrypting implicitly");
+        Logger?.LogDebug("[CoreFtp] Encrypting implicitly");
         await ActivateEncryptionAsync();
 
         var response = await GetResponseAsync(token);

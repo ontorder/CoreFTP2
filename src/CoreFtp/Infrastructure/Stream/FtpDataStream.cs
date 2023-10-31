@@ -28,14 +28,14 @@ public sealed class FtpDataStream : System.IO.Stream
     public FtpDataStream(System.IO.Stream encapsulatedStream, FtpClient client, ILogger? logger)
     {
         _logger = logger;
-        _logger?.LogDebug("[FtpDataStream] Constructing");
+        _logger?.LogDebug("[CoreFtp] FtpDataStream Constructing");
         _encapsulatedStream = encapsulatedStream;
         _client = client;
     }
 
     protected override void Dispose(bool disposing)
     {
-        _logger?.LogDebug("[FtpDataStream] Disposing");
+        _logger?.LogDebug("[CoreFtp] FtpDataStream Disposing");
         base.Dispose(disposing);
 
         try
@@ -60,25 +60,25 @@ public sealed class FtpDataStream : System.IO.Stream
 
     public override async Task FlushAsync(CancellationToken cancellationToken)
     {
-        _logger?.LogDebug("[FtpDataStream] FlushAsync");
+        _logger?.LogDebug("[CoreFtp] FtpDataStream FlushAsync");
         await _encapsulatedStream.FlushAsync(cancellationToken);
     }
 
     public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
     {
-        _logger?.LogDebug("[FtpDataStream] ReadAsync");
+        _logger?.LogDebug("[CoreFtp] FtpDataStream ReadAsync");
         return await _encapsulatedStream.ReadAsync(buffer.AsMemory(offset, count), cancellationToken);
     }
 
     public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
     {
-        _logger?.LogDebug("[FtpDataStream] WriteAsync");
+        _logger?.LogDebug("[CoreFtp] FtpDataStream WriteAsync");
         await _encapsulatedStream.WriteAsync(buffer.AsMemory(offset, count), cancellationToken);
     }
 
     public override void Flush()
     {
-        _logger?.LogDebug("[FtpDataStream] Flush");
+        _logger?.LogDebug("[CoreFtp] FtpDataStream Flush");
         _encapsulatedStream.Flush();
     }
 
@@ -86,13 +86,13 @@ public sealed class FtpDataStream : System.IO.Stream
 
     public override long Seek(long offset, SeekOrigin origin)
     {
-        _logger?.LogDebug("[FtpDataStream] Seek");
+        _logger?.LogDebug("[CoreFtp] FtpDataStream Seek");
         return _encapsulatedStream.Seek(offset, origin);
     }
 
     public override void SetLength(long value)
     {
-        _logger?.LogDebug("[FtpDataStream] SetLength");
+        _logger?.LogDebug("[CoreFtp] FtpDataStream SetLength");
         _encapsulatedStream.SetLength(value);
     }
 

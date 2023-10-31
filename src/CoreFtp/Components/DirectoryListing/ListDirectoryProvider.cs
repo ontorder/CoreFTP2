@@ -99,7 +99,7 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
         CancellationToken cancellationToken = default)
     {
         EnsureLoggedIn();
-        Logger?.LogDebug("[ListDirectoryProvider] Listing {ftpNodeType}", ftpNodeType);
+        Logger?.LogDebug("[CoreFtp] ListDirectoryProvider: Listing {ftpNodeType}", ftpNodeType);
 
         try
         {
@@ -148,7 +148,7 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
     private async IAsyncEnumerable<FtpNodeInformation> ListNodesAsyncEnum(FtpNodeType? ftpNodeType = null, DirSort? sortBy = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         EnsureLoggedIn();
-        Logger?.LogDebug("[ListDirectoryProvider] Listing {ftpNodeType}", ftpNodeType);
+        Logger?.LogDebug("[CoreFtp] ListDirectoryProvider: Listing {ftpNodeType}", ftpNodeType);
 
         try
         {
