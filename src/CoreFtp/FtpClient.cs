@@ -311,7 +311,7 @@ public sealed class FtpClient : IFtpClient
         var passCmd = new FtpCommandEnvelope(FtpCommand.PASS, username != Constants.ANONYMOUS_USER ? Configuration.Password : string.Empty);
         var passResponse = await ControlStream.SendCommandReadAsync(passCmd, cancellationToken);
         await BailIfResponseNotAsync(passResponse, cancellationToken, FtpStatusCode.LoggedInProceed);
-        if (userResponse.FtpStatusCode != FtpStatusCode.NeedLoginAccount)
+        if (passResponse.FtpStatusCode != FtpStatusCode.LoggedInProceed)
             _logger?.LogWarning("[CoreFtp] pass response was not 230: '{code} {msg}'", (int)passResponse.FtpStatusCode, passResponse.ResponseMessage);
 
         IsAuthenticated = true;
