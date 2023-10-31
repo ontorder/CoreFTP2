@@ -464,10 +464,10 @@ public sealed class FtpClient : IFtpClient
 
     private async Task IgnoreStaleData(CancellationToken cancellationToken)
     {
-        if (IsConnected && ControlStream.SocketDataAvailable())
+        if (IsConnected && ControlStream.SocketDataAvailable() is int dataSize)
         {
             var staleData = await ControlStream.GetResponseAsync(cancellationToken);
-            _logger?.LogWarning("[CoreFtp] Stale data detected: {msg}", staleData.ResponseMessage);
+            _logger?.LogWarning("[CoreFtp] Stale data detected ({size}): {msg}", dataSize, staleData.ResponseMessage);
         }
     }
 

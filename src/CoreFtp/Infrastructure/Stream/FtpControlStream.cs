@@ -209,10 +209,10 @@ public sealed partial class FtpControlStream : System.IO.Stream
 
         try
         {
-            if (SocketDataAvailable())
+            if (SocketDataAvailable() is int size && size > 0)
             {
                 var staleDataResult = await GetResponseAsync(token);
-                Logger?.LogWarning("[CoreFtp] Stale data on socket: {responseMessage}", staleDataResult.ResponseMessage);
+                Logger?.LogWarning("[CoreFtp] Stale data on socket ({size}): {responseMessage}", size, staleDataResult.ResponseMessage);
             }
 
             string commandToPrint = command.StartsWith(FtpCommand.PASS.ToString())
@@ -233,7 +233,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
 
     public override void SetLength(long value) => throw new InvalidOperationException();
 
-    public bool SocketDataAvailable() => (Socket?.Available ?? 0) > 0;
+    public int? SocketDataAvailable() => Socket?.Available;
 
     public override void Write(byte[] buffer, int offset, int count)
         => throw new Exception("use async");
@@ -343,7 +343,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
 
             while (true)
             {
-                if (SocketDataAvailable())
+                if (SocketDataAvailable() is int size && size > 0)
                 {
                     await GetResponseAsync(token);
                     return;
