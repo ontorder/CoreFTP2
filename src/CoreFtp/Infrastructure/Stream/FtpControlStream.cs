@@ -219,7 +219,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
                 ? "PASS *****"
                 : command;
 
-            Logger?.LogDebug("[FtpClient] Sending command: {commandToPrint}", commandToPrint);
+            Logger?.LogDebug("[CoreFtp] Sending command: {commandToPrint}", commandToPrint);
             await WriteLineAsync(command, token);
 
             var response = await GetResponseAsync(token);

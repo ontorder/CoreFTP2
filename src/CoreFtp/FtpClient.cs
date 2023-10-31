@@ -59,7 +59,7 @@ public sealed class FtpClient : IFtpClient
     /// <returns></returns>
     public async Task ChangeWorkingDirectoryAsync(string directory, CancellationToken cancellationToken)
     {
-        _logger?.LogTrace("[FtpClient] changing directory to {directory}", directory);
+        _logger?.LogTrace("[CoreFtp] changing directory to {directory}", directory);
         if (directory.IsNullOrWhiteSpace() || directory.Equals("."))
             throw new ArgumentOutOfRangeException(nameof(directory), "Supplied directory was incorrect");
 
@@ -68,10 +68,16 @@ public sealed class FtpClient : IFtpClient
         var cwdCmd = new FtpCommandEnvelope(FtpCommand.CWD, directory);
         var cwdResponse = await ControlStream.SendCommandReadAsync(cwdCmd, cancellationToken);
 
+        if (cwdResponse.FtpStatusCode != FtpStatusCode.FileActionOK)
+            _logger?.LogWarning("[CoreFtp] cwd response was not 250: {msg}", cwdResponse.ResponseMessage);
+
         if (cwdResponse.IsSuccess == false)
             throw new FtpException(cwdResponse.ResponseMessage);
 
         var pwdResponse = await ControlStream.SendCommandReadAsync(FtpCommand.PWD, cancellationToken);
+
+        if (pwdResponse.FtpStatusCode != FtpStatusCode.PathnameCreated)
+            _logger?.LogWarning("[CoreFtp] pwd response was not 257", pwdResponse.ResponseMessage);
 
         if (pwdResponse.IsSuccess == false)
             throw new FtpException(pwdResponse.ResponseMessage);
@@ -80,7 +86,7 @@ public sealed class FtpClient : IFtpClient
 
         if (pwdResponse.ResponseMessage.Contains(TrimChar) == false)
         {
-            _logger?.LogWarning("[FtpClient] pwd failed? '{resp}'\ncwd: '{cwd}'", pwdResponse.ResponseMessage, cwdResponse.ResponseMessage);
+            _logger?.LogWarning("[CoreFtp] pwd failed? '{resp}'\ncwd: '{cwd}'", pwdResponse.ResponseMessage, cwdResponse.ResponseMessage);
             throw new Exception($"pwd response '{pwdResponse.ResponseMessage}' has no '{TrimChar}'\n'");
         }
         var splitted = pwdResponse.ResponseMessage.Split(TrimChar);
@@ -94,7 +100,7 @@ public sealed class FtpClient : IFtpClient
     /// <returns></returns>
     public async Task CloseFileDataStreamAsync(CancellationToken ctsToken = default)
     {
-        _logger?.LogTrace("[FtpClient] Closing write file stream");
+        _logger?.LogTrace("[CoreFtp] Closing write file stream");
         _dataStream.Dispose();
 
         if (ControlStream != null)
@@ -111,7 +117,7 @@ public sealed class FtpClient : IFtpClient
         if (directory.IsNullOrWhiteSpace() || directory.Equals("."))
             throw new ArgumentOutOfRangeException(nameof(directory), "Directory supplied was not valid");
 
-        _logger?.LogDebug("[FtpClient] Creating directory {directory}", directory);
+        _logger?.LogDebug("[CoreFtp] Creating directory {directory}", directory);
         EnsureLoggedIn();
         await CreateDirectoryStructureRecursively(directory.Split('/'), directory.StartsWith("/"), cancellationToken);
     }
@@ -129,7 +135,7 @@ public sealed class FtpClient : IFtpClient
         if (directory == "/")
             return;
 
-        _logger?.LogDebug("[FtpClient] Deleting directory {directory}", directory);
+        _logger?.LogDebug("[CoreFtp] Deleting directory {directory}", directory);
 
         EnsureLoggedIn();
 
@@ -159,7 +165,7 @@ public sealed class FtpClient : IFtpClient
     public async Task DeleteFileAsync(string fileName, CancellationToken cancellationToken)
     {
         EnsureLoggedIn();
-        _logger?.LogDebug("[FtpClient] Deleting file {fileName}", fileName);
+        _logger?.LogDebug("[CoreFtp] Deleting file {fileName}", fileName);
         var deleCmd = new FtpCommandEnvelope(FtpCommand.DELE, fileName);
         var response = await ControlStream.SendCommandReadAsync(deleCmd, cancellationToken);
 
@@ -200,7 +206,7 @@ public sealed class FtpClient : IFtpClient
     public async Task<long> GetFileSizeAsync(string fileName, CancellationToken cancellationToken = default)
     {
         EnsureLoggedIn();
-        _logger?.LogDebug("[FtpClient] Getting file size for {fileName}", fileName);
+        _logger?.LogDebug("[CoreFtp] Getting file size for {fileName}", fileName);
         var sizeCmd = new FtpCommandEnvelope(FtpCommand.SIZE, fileName);
         var sizeResponse = await ControlStream.SendCommandReadAsync(sizeCmd, cancellationToken);
 
@@ -220,7 +226,7 @@ public sealed class FtpClient : IFtpClient
         try
         {
             EnsureLoggedIn();
-            _logger?.LogDebug("[FtpClient] Listing files in {WorkingDirectory}", WorkingDirectory);
+            _logger?.LogDebug("[CoreFtp] Listing files in {WorkingDirectory}", WorkingDirectory);
             return await _directoryProvider.ListAllAsync(cancellationToken);
         }
         finally
@@ -238,7 +244,7 @@ public sealed class FtpClient : IFtpClient
         try
         {
             EnsureLoggedIn();
-            _logger?.LogDebug("[FtpClient] Listing files in {WorkingDirectory}", WorkingDirectory);
+            _logger?.LogDebug("[CoreFtp] Listing files in {WorkingDirectory}", WorkingDirectory);
             return await _directoryProvider.ListFilesAsync(sortBy, cancellationToken);
         }
         finally
@@ -252,7 +258,7 @@ public sealed class FtpClient : IFtpClient
         try
         {
             EnsureLoggedIn();
-            _logger?.LogDebug("[FtpClient] Listing files in {WorkingDirectory}", WorkingDirectory);
+            _logger?.LogDebug("[CoreFtp] Listing files in {WorkingDirectory}", WorkingDirectory);
             await foreach (var file in _directoryProvider.ListFilesAsyncEnum(sortBy, cancellationToken))
                 yield return file;
         }
@@ -271,7 +277,7 @@ public sealed class FtpClient : IFtpClient
         try
         {
             EnsureLoggedIn();
-            _logger?.LogDebug("[FtpClient] Listing directories in {WorkingDirectory}", WorkingDirectory);
+            _logger?.LogDebug("[CoreFtp] Listing directories in {WorkingDirectory}", WorkingDirectory);
             return await _directoryProvider.ListDirectoriesAsync(cancellationToken);
         }
         finally
@@ -297,13 +303,16 @@ public sealed class FtpClient : IFtpClient
 
         var userCmd = new FtpCommandEnvelope(FtpCommand.USER, username);
         var userResponse = await ControlStream.SendCommandReadAsync(userCmd, cancellationToken);
-
         await BailIfResponseNotAsync(userResponse, cancellationToken, FtpStatusCode.SendUserCommand, FtpStatusCode.SendPasswordCommand, FtpStatusCode.LoggedInProceed);
+        if (userResponse.FtpStatusCode != FtpStatusCode.SendPasswordCommand)
+            _logger?.LogWarning("[CoreFtp] user response was not 331: '{msg}'", userResponse.ResponseMessage);
 
-        var oassCmd = new FtpCommandEnvelope(FtpCommand.PASS, username != Constants.ANONYMOUS_USER ? Configuration.Password : string.Empty);
-        var passResponse = await ControlStream.SendCommandReadAsync(oassCmd, cancellationToken);
-
+        var passCmd = new FtpCommandEnvelope(FtpCommand.PASS, username != Constants.ANONYMOUS_USER ? Configuration.Password : string.Empty);
+        var passResponse = await ControlStream.SendCommandReadAsync(passCmd, cancellationToken);
         await BailIfResponseNotAsync(passResponse, cancellationToken, FtpStatusCode.LoggedInProceed);
+        if (userResponse.FtpStatusCode != FtpStatusCode.NeedLoginAccount)
+            _logger?.LogWarning("[CoreFtp] user response was not 230: '{msg}'", userResponse.ResponseMessage);
+
         IsAuthenticated = true;
 
         if (ControlStream.IsEncrypted)
@@ -337,7 +346,7 @@ public sealed class FtpClient : IFtpClient
         if (!IsConnected)
             return;
 
-        _logger?.LogTrace("[FtpClient] Logging out");
+        _logger?.LogTrace("[CoreFtp] Logging out");
         await ControlStream.SendCommandReadAsync(FtpCommand.QUIT, cancellationToken);
         ControlStream.Disconnect();
         IsAuthenticated = false;
@@ -350,7 +359,7 @@ public sealed class FtpClient : IFtpClient
     /// <returns></returns>
     public async Task<Stream> OpenFileReadStreamAsync(string fileName, CancellationToken cancellationToken)
     {
-        _logger?.LogDebug("[FtpClient] Opening file read stream for {fileName}", fileName);
+        _logger?.LogDebug("[CoreFtp] Opening file read stream for {fileName}", fileName);
         return new FtpDataStream(await OpenFileStreamAsync(fileName, FtpCommand.RETR, cancellationToken), this, _logger);
     }
 
@@ -362,7 +371,7 @@ public sealed class FtpClient : IFtpClient
     public async Task<Stream> OpenFileWriteStreamAsync(string fileName, CancellationToken cancellationToken)
     {
         string filePath = WorkingDirectory.CombineAsUriWith(fileName);
-        _logger?.LogDebug("[FtpClient] Opening file read stream for {filePath}", filePath);
+        _logger?.LogDebug("[CoreFtp] Opening file read stream for {filePath}", filePath);
         var segments = filePath
             .Split('/')
             .Where(x => !x.IsNullOrWhiteSpace())
@@ -380,7 +389,7 @@ public sealed class FtpClient : IFtpClient
     public async Task RenameAsync(string from, string to, CancellationToken cancellationToken = default)
     {
         EnsureLoggedIn();
-        _logger?.LogDebug("[FtpClient] Renaming from {from}, to {to}", from, to);
+        _logger?.LogDebug("[CoreFtp] Renaming from {from}, to {to}", from, to);
 
         var rnfrCmd = new FtpCommandEnvelope(FtpCommand.RNFR, from);
         var renameFromResponse = await ControlStream.SendCommandReadAsync(rnfrCmd, cancellationToken);
@@ -403,7 +412,7 @@ public sealed class FtpClient : IFtpClient
     public async Task<FtpResponse> SetClientNameAsync(string clientName, CancellationToken cancellationToken = default)
     {
         EnsureLoggedIn();
-        _logger?.LogDebug("[FtpClient] Setting client name to {clientName}", clientName);
+        _logger?.LogDebug("[CoreFtp] Setting client name to {clientName}", clientName);
 
         var clntCmd = new FtpCommandEnvelope(FtpCommand.CLNT, clientName);
         return await ControlStream.SendCommandReadAsync(clntCmd, cancellationToken);
@@ -418,7 +427,7 @@ public sealed class FtpClient : IFtpClient
     public async Task SetTransferMode(FtpTransferMode transferMode, char secondType = '\0')
     {
         EnsureLoggedIn();
-        _logger?.LogTrace("[FtpClient] Setting transfer mode {transferMode}, {secondType}", transferMode, secondType);
+        _logger?.LogTrace("[CoreFtp] Setting transfer mode {transferMode}, {secondType}", transferMode, secondType);
         var typeCmd = new FtpCommandEnvelope(
             FtpCommand.TYPE,
             secondType != '\0'
@@ -427,7 +436,10 @@ public sealed class FtpClient : IFtpClient
         );
         var response = await ControlStream.SendCommandReadAsync(typeCmd);
 
-        if (!response.IsSuccess)
+        if (response.FtpStatusCode != FtpStatusCode.CommandOK)
+            _logger?.LogWarning("[CoreFtp] type response was not 200: {msg}", response.ResponseMessage);
+
+        if (response.IsSuccess == false)
             throw new FtpException(response.ResponseMessage);
     }
 
@@ -454,7 +466,7 @@ public sealed class FtpClient : IFtpClient
         if (IsConnected && ControlStream.SocketDataAvailable())
         {
             var staleData = await ControlStream.GetResponseAsync(cancellationToken);
-            _logger?.LogWarning("Stale data detected: {msg}", staleData.ResponseMessage);
+            _logger?.LogWarning("[CoreFtp] Stale data detected: {msg}", staleData.ResponseMessage);
         }
     }
 
@@ -464,7 +476,7 @@ public sealed class FtpClient : IFtpClient
     /// <returns></returns>
     private IDirectoryProvider DetermineDirectoryProvider()
     {
-        _logger?.LogTrace("[FtpClient] Determining directory provider");
+        _logger?.LogTrace("[CoreFtp] Determining directory provider");
         if (this.UsesMlsd())
             return new MlsdDirectoryProvider(this, _logger, Configuration);
 
@@ -474,8 +486,11 @@ public sealed class FtpClient : IFtpClient
     private async Task<IEnumerable<string>> DetermineFeaturesAsync(CancellationToken cancellationToken)
     {
         EnsureLoggedIn();
-        _logger?.LogTrace("[FtpClient] Determining features");
+        _logger?.LogTrace("[CoreFtp] Determining features");
         var response = await ControlStream.SendCommandReadAsync(FtpCommand.FEAT, cancellationToken);
+
+        if (response.FtpStatusCode != FtpStatusCode.EndFeats)
+            _logger?.LogWarning("feat response was not 211: {msg}", response.ResponseMessage);
 
         if (response.FtpStatusCode == FtpStatusCode.CommandSyntaxError || response.FtpStatusCode == FtpStatusCode.CommandNotImplemented)
             return Enumerable.Empty<string>();
@@ -496,7 +511,7 @@ public sealed class FtpClient : IFtpClient
     /// <returns></returns>
     private async Task CreateDirectoryStructureRecursively(IReadOnlyCollection<string> directories, bool isRootedPath, CancellationToken cancellationToken)
     {
-        _logger?.LogDebug("[FtpClient] Creating directory structure recursively {dirs}", string.Join("/", directories));
+        _logger?.LogDebug("[CoreFtp] Creating directory structure recursively {dirs}", string.Join("/", directories));
         string originalPath = WorkingDirectory;
 
         if (isRootedPath && directories.Any())
@@ -543,7 +558,7 @@ public sealed class FtpClient : IFtpClient
     private async Task<Stream> OpenFileStreamAsync(string fileName, FtpCommand command, CancellationToken cancellationToken)
     {
         EnsureLoggedIn();
-        _logger?.LogDebug("[FtpClient] Opening filestream for {fileName}, {command}", fileName, command);
+        _logger?.LogDebug("[CoreFtp] Opening filestream for {fileName}, {command}", fileName, command);
         _dataStream = await ConnectDataStreamAsync(cancellationToken);
 
         var ftpCmd = new FtpCommandEnvelope(command, fileName);
@@ -572,7 +587,7 @@ public sealed class FtpClient : IFtpClient
     /// <returns></returns>
     internal async Task<Stream> ConnectDataStreamAsync(CancellationToken cancellationToken)
     {
-        _logger?.LogTrace("[FtpClient] Connecting to a data socket");
+        _logger?.LogTrace("[CoreFtp] Connecting to a data socket");
 
         var epsvResult = await ControlStream.SendCommandReadAsync(FtpCommand.EPSV, cancellationToken);
 

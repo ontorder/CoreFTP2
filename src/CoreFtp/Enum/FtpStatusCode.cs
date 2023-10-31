@@ -10,6 +10,7 @@ public enum FtpStatusCode
     CommandOK = 200,
     CommandExtraneous = 202,
     SystemHelpReply = 211,
+    EndFeats = 211,
     DirectoryStatus = 212,
     FileStatus = 213,
     SystemType = 215,
