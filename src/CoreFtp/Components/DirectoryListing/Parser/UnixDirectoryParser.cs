@@ -10,26 +10,12 @@ using System.Text.RegularExpressions;
 
 namespace CoreFtp.Components.DirectoryListing.Parser;
 
-public sealed class UnixDirectoryParser : IListDirectoryParser
+public sealed partial class UnixDirectoryParser : IListDirectoryParser
 {
     private readonly List<Regex> unixRegexList = new()
     {
-        new Regex(@"(?<permissions>.+)\s+" +
-                  @"(?<objectcount>\d+)\s+" +
-                  @"(?<user>.+)\s+" +
-                  @"(?<group>.+)\s+" +
-                  @"(?<size>\d+)\s+" +
-                  @"(?<date>\w+\s+\d+\s+\d+:\d+|\w+\s+\d+\s+\d+)\s+" +
-                  @"(?<name>.*)$", RegexOptions.Compiled),
-
-        // Non-standard StingRay FTP Server
-
-        new Regex(@"(?<permissions>.+)\s+" +
-                  @"(?<objectcount>\d+)\s+" +
-                  @"(?<size>\d+)\s+" +
-                  @"(?<date>\w+\s+\d+\s+\d+:\d+|\w+\s+\d+\s+\d+)\s+" +
-                  @"(?<name>.*)$", RegexOptions.Compiled)
-
+        CreateUnixDirRegex(),
+        CreateStingrayUnixDirRegex(),
     };
 
     public bool Test(string testString)
@@ -42,17 +28,17 @@ public sealed class UnixDirectoryParser : IListDirectoryParser
         return false;
     }
 
-    public FtpNodeInformation Parse(string line)
+    public FtpNodeInformation? Parse(string line)
     {
         var matches = Match.Empty;
         foreach (var expression in unixRegexList)
         {
-            if (!expression.Match(line).Success) continue;
+            if (false == expression.Match(line).Success) continue;
             matches = expression.Match(line);
             break;
         }
 
-        if (!matches.Success)
+        if (matches.Success == false)
             return null;
 
         var node = new FtpNodeInformation
@@ -106,4 +92,24 @@ public sealed class UnixDirectoryParser : IListDirectoryParser
             ? size
             : 0;
     }
+
+    [GeneratedRegex(
+        @"(?<permissions>.+)\s+" +
+        @"(?<objectcount>\d+)\s+" +
+        @"(?<user>.+)\s+" +
+        @"(?<group>.+)\s+" +
+        @"(?<size>\d+)\s+" +
+        @"(?<date>\w+\s+\d+\s+\d+:\d+|\w+\s+\d+\s+\d+)\s+" +
+        @"(?<name>.*)$",
+        RegexOptions.Compiled)]
+    private static partial Regex CreateUnixDirRegex();
+
+    [GeneratedRegex(
+        @"(?<permissions>.+)\s+" +
+        @"(?<objectcount>\d+)\s+" +
+        @"(?<size>\d+)\s+" +
+        @"(?<date>\w+\s+\d+\s+\d+:\d+|\w+\s+\d+\s+\d+)\s+" +
+        @"(?<name>.*)$",
+        RegexOptions.Compiled)]
+    private static partial Regex CreateStingrayUnixDirRegex();
 }

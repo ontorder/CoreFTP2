@@ -34,11 +34,8 @@ public static class StringExtensions
 
     internal static int? ExtractEpsvPortNumber(this string operand)
     {
-        // Added , as separator
         var regex = new Regex(@"(?:[\|,])(?<PortNumber>\d+)(?:[\|,])", RegexOptions.Compiled);
-
         var match = regex.Match(operand);
-
         if (!match.Success)
             return null;
 

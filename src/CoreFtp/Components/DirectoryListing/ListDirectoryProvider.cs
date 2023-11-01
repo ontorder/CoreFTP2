@@ -145,7 +145,8 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
         }
     }
 
-    private async IAsyncEnumerable<FtpNodeInformation> ListNodesAsyncEnum(FtpNodeType? ftpNodeType = null, DirSort? sortBy = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    private async IAsyncEnumerable<FtpNodeInformation> ListNodesAsyncEnum(FtpNodeType? ftpNodeType = null, DirSort? sortBy = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         EnsureLoggedIn();
         Logger?.LogDebug("[CoreFtp] ListDirectoryProvider: Listing {ftpNodeType}", ftpNodeType);
@@ -181,7 +182,6 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
                     break;
 
                 var parsed = parser.Parse(line);
-
                 if (parsed != null && ftpNodeType.HasValue || parsed.NodeType == ftpNodeType)
                     yield return parsed;
             }

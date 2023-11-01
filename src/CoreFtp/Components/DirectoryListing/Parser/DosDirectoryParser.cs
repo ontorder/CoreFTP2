@@ -1,4 +1,6 @@
-﻿using CoreFtp.Enum;
+﻿#nullable enable
+
+using CoreFtp.Enum;
 using CoreFtp.Infrastructure;
 using CoreFtp.Infrastructure.Extensions;
 using System.Globalization;
@@ -6,10 +8,10 @@ using System.Text.RegularExpressions;
 
 namespace CoreFtp.Components.DirectoryListing.Parser;
 
-public sealed class DosDirectoryParser : IListDirectoryParser
+public sealed partial class DosDirectoryParser : IListDirectoryParser
 {
-    private readonly Regex dosDirectoryRegex = new(@"(?<modify>\d+-\d+-\d+\s+\d+:\d+\w+)\s+<DIR>\s+(?<name>.*)$", RegexOptions.Compiled);
-    private readonly Regex dosFileRegex = new(@"(?<modify>\d+-\d+-\d+\s+\d+:\d+\w+)\s+(?<size>\d+)\s+(?<name>.*)$", RegexOptions.Compiled);
+    private readonly Regex dosDirectoryRegex = CreateDosDirRegex();
+    private readonly Regex dosFileRegex = CreateDosFileRegex();
 
     public bool Test(string testString)
     {
@@ -17,7 +19,7 @@ public sealed class DosDirectoryParser : IListDirectoryParser
                dosFileRegex.Match(testString).Success;
     }
 
-    public FtpNodeInformation Parse(string line)
+    public FtpNodeInformation? Parse(string line)
     {
         var directoryMatch = dosDirectoryRegex.Match(line);
         if (directoryMatch.Success)
@@ -56,4 +58,10 @@ public sealed class DosDirectoryParser : IListDirectoryParser
             Size = match.Groups["size"].Value.ParseOrDefault()
         };
     }
+
+    [GeneratedRegex("(?<modify>\\d+-\\d+-\\d+\\s+\\d+:\\d+\\w+)\\s+<DIR>\\s+(?<name>.*)$", RegexOptions.Compiled)]
+    private static partial Regex CreateDosDirRegex();
+
+    [GeneratedRegex("(?<modify>\\d+-\\d+-\\d+\\s+\\d+:\\d+\\w+)\\s+(?<size>\\d+)\\s+(?<name>.*)$", RegexOptions.Compiled)]
+    private static partial Regex CreateDosFileRegex();
 }

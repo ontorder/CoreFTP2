@@ -1,9 +1,11 @@
-﻿namespace CoreFtp.Components.DirectoryListing.Parser;
+﻿#nullable enable
+
+namespace CoreFtp.Components.DirectoryListing.Parser;
 
 using Infrastructure;
 
 public interface IListDirectoryParser
 {
     bool Test( string testString );
-    FtpNodeInformation Parse( string line );
+    FtpNodeInformation? Parse( string line );
 }
