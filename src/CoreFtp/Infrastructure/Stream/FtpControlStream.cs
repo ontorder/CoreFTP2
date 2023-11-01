@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net.Security;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
@@ -175,6 +176,24 @@ public sealed partial class FtpControlStream : System.IO.Stream
         }
     }
 
+    public async Task<TReturn> GetResponseAsync<TReturn>(Func<IAsyncEnumerable<string>, Task<TReturn>> parser, CancellationToken token = default)
+    {
+        if (Encoding == null)
+            throw new ArgumentNullException(nameof(Encoding));
+
+        await ReceiveSemaphore.WaitAsync(token);
+
+        try
+        {
+            token.ThrowIfCancellationRequested();
+            return await parser(ReadLineAsync_DEBUG(Encoding, token));
+        }
+        finally
+        {
+            ReceiveSemaphore.Release();
+        }
+    }
+
     public async Task<System.IO.Stream> OpenDataStreamAsync(string host, int port, CancellationToken token)
     {
         Logger?.LogDebug("[CoreFtp] FtpSocketStream: Opening datastream");
@@ -197,10 +216,19 @@ public sealed partial class FtpControlStream : System.IO.Stream
     public async Task<FtpResponse> SendCommandReadAsync(FtpCommand command, CancellationToken token = default)
         => await SendCommandReadAsync(new FtpCommandEnvelope(command), token);
 
+    public async Task<TReturn> SendCommandReadAsync<TReturn>(FtpCommand command, Func<IAsyncEnumerable<string>, Task<TReturn>> parser, CancellationToken token = default)
+        => await SendCommandReadAsync(new FtpCommandEnvelope(command), parser, token);
+
     public async Task<FtpResponse> SendCommandReadAsync(FtpCommandEnvelope envelope, CancellationToken token = default)
     {
         string commandString = envelope.GetCommandString();
         return await SendReadAsync(commandString, token);
+    }
+
+    public async Task<TReturn> SendCommandReadAsync<TReturn>(FtpCommandEnvelope envelope, Func<IAsyncEnumerable<string>, Task<TReturn>> parser, CancellationToken token = default)
+    {
+        string commandString = envelope.GetCommandString();
+        return await SendReadAsync(commandString, parser, token);
     }
 
     public async Task<FtpResponse> SendReadAsync(string command, CancellationToken token = default)
@@ -222,8 +250,29 @@ public sealed partial class FtpControlStream : System.IO.Stream
             Logger?.LogDebug("[CoreFtp] Sending command: {commandToPrint}", commandToPrint);
             await WriteLineAsync(command, token);
 
-            var response = await GetResponseAsync(token);
-            return response;
+            return await GetResponseAsync(token);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<TReturn> SendReadAsync<TReturn>(string command, Func<IAsyncEnumerable<string>, Task<TReturn>> parser, CancellationToken token = default)
+    {
+        await Semaphore.WaitAsync(token);
+
+        try
+        {
+            if (SocketDataAvailable() is int size && size > 0)
+            {
+                var staleDataResult = await GetResponseAsync(token);
+                Logger?.LogWarning("[CoreFtp] Stale data on socket ({size}): {responseMessage}", size, staleDataResult.ResponseMessage);
+            }
+
+            // TODO log write
+            await WriteLineAsync(command, token);
+            return await GetResponseAsync(parser, token);
         }
         finally
         {
@@ -319,7 +368,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
             {
                 if (SocketDataAvailable() is int size && size > 0)
                 {
-                    await GetResponseAsync(token);
+                    _ = await GetResponseAsync(FtpModelParser.ParseMotdAsync, token);
                     return;
                 }
                 await Task.Delay(10, token);
@@ -420,10 +469,12 @@ public sealed partial class FtpControlStream : System.IO.Stream
             if (count == 0) yield break;
 
             data.Add(single[0]);
+            if (data.Count > 100_000) throw new ArgumentOutOfRangeException();
+
             if (single[0] == '\n')
             {
                 string ascii = Encoding.ASCII.GetString(data.ToArray());
-                yield return ascii;
+                yield return ascii.TrimEnd();
                 data.Clear();
             }
             goto loop;

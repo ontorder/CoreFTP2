@@ -66,32 +66,32 @@ public sealed class FtpClient : IFtpClient
         EnsureLoggedIn();
 
         var cwdCmd = new FtpCommandEnvelope(FtpCommand.CWD, directory);
-        var cwdResponse = await ControlStream.SendCommandReadAsync(cwdCmd, cancellationToken);
+        var cwdResponse = await ControlStream.SendCommandReadAsync(cwdCmd, FtpModelParser.ParseCwdAsync, cancellationToken);
 
-        if (cwdResponse.FtpStatusCode != FtpStatusCode.FileActionOK)
-            _logger?.LogWarning("[CoreFtp] cwd response was not 250: '{code} {msg}'", (int)cwdResponse.FtpStatusCode, cwdResponse.ResponseMessage);
+        //if (cwdResponse.FtpStatusCode != FtpStatusCode.FileActionOK)
+        //    _logger?.LogWarning("[CoreFtp] cwd response was not 250: '{code} {msg}'", (int)cwdResponse.FtpStatusCode, cwdResponse.ResponseMessage);
 
-        if (cwdResponse.IsSuccess == false)
-            throw new FtpException(cwdResponse.ResponseMessage);
+        if (cwdResponse == false)
+            throw new FtpException("cwd fail");
 
-        var pwdResponse = await ControlStream.SendCommandReadAsync(FtpCommand.PWD, cancellationToken);
+        var pwdResponse = await ControlStream.SendCommandReadAsync(FtpCommand.PWD, FtpModelParser.ParsePwdAsync, cancellationToken);
 
-        if (pwdResponse.FtpStatusCode != FtpStatusCode.PathnameCreated)
-            _logger?.LogWarning("[CoreFtp] pwd response was not 257: '{code} {msg}'", (int)pwdResponse.FtpStatusCode, pwdResponse.ResponseMessage);
+        //if (pwdResponse.FtpStatusCode != FtpStatusCode.PathnameCreated)
+        //    _logger?.LogWarning("[CoreFtp] pwd response was not 257: '{code} {msg}'", (int)pwdResponse.FtpStatusCode, pwdResponse.ResponseMessage);
 
-        if (pwdResponse.IsSuccess == false)
-            throw new FtpException(pwdResponse.ResponseMessage);
+        if (pwdResponse.Ok == false)
+            throw new FtpException("pwd fail");
 
         const char TrimChar = '"';
 
-        if (pwdResponse.ResponseMessage.Contains(TrimChar) == false)
-        {
-            _logger?.LogWarning("[CoreFtp] pwd failed? '{code} {resp}'\ncwd: '{code} {cwd}'",
-                (int)pwdResponse.FtpStatusCode, pwdResponse.ResponseMessage, (int)cwdResponse.FtpStatusCode, cwdResponse.ResponseMessage);
-            throw new Exception($"pwd response '{pwdResponse.ResponseMessage}' has no '{TrimChar}'\n'");
-        }
-        var splitted = pwdResponse.ResponseMessage.Split(TrimChar);
-        WorkingDirectory = splitted[1];
+        //if (pwdResponse.ResponseMessage.Contains(TrimChar) == false)
+        //{
+        //    _logger?.LogWarning("[CoreFtp] pwd failed? '{code} {resp}'\ncwd: '{code} {cwd}'",
+        //        (int)pwdResponse.FtpStatusCode, pwdResponse.ResponseMessage, (int)cwdResponse.FtpStatusCode, cwdResponse.ResponseMessage);
+        //    throw new Exception($"pwd response '{pwdResponse.ResponseMessage}' has no '{TrimChar}'\n'");
+        //}
+        //var splitted = pwdResponse.ResponseMessage.Split(TrimChar);
+        WorkingDirectory = pwdResponse.Path;
     }
 
     /// <summary>
@@ -303,16 +303,20 @@ public sealed class FtpClient : IFtpClient
         await ControlStream.ConnectAsync(cancellationToken);
 
         var userCmd = new FtpCommandEnvelope(FtpCommand.USER, username);
-        var userResponse = await ControlStream.SendCommandReadAsync(userCmd, cancellationToken);
-        await BailIfResponseNotAsync(userResponse, cancellationToken, FtpStatusCode.SendUserCommand, FtpStatusCode.SendPasswordCommand, FtpStatusCode.LoggedInProceed);
-        if (userResponse.FtpStatusCode != FtpStatusCode.SendPasswordCommand)
-            _logger?.LogWarning("[CoreFtp] user response was not 331: '{code} {msg}'", (int)userResponse.FtpStatusCode, userResponse.ResponseMessage);
+        var userResponse = await ControlStream.SendCommandReadAsync(userCmd, FtpModelParser.ParseUserAsync, cancellationToken);
+        //await BailIfResponseNotAsync(userResponse, cancellationToken, FtpStatusCode.SendUserCommand, FtpStatusCode.SendPasswordCommand, FtpStatusCode.LoggedInProceed);
+        //if (userResponse.FtpStatusCode != FtpStatusCode.SendPasswordCommand)
+        //    _logger?.LogWarning("[CoreFtp] user response was not 331: '{code} {msg}'", (int)userResponse.FtpStatusCode, userResponse.ResponseMessage);
+        if (userResponse == false)
+            _logger?.LogWarning("[CoreFtp] user response false");
 
         var passCmd = new FtpCommandEnvelope(FtpCommand.PASS, username != Constants.ANONYMOUS_USER ? Configuration.Password : string.Empty);
-        var passResponse = await ControlStream.SendCommandReadAsync(passCmd, cancellationToken);
-        await BailIfResponseNotAsync(passResponse, cancellationToken, FtpStatusCode.LoggedInProceed);
-        if (passResponse.FtpStatusCode != FtpStatusCode.LoggedInProceed)
-            _logger?.LogWarning("[CoreFtp] pass response was not 230: '{code} {msg}'", (int)passResponse.FtpStatusCode, passResponse.ResponseMessage);
+        var passResponse = await ControlStream.SendCommandReadAsync(passCmd, FtpModelParser.ParsePassAsync, cancellationToken);
+        //await BailIfResponseNotAsync(passResponse, cancellationToken, FtpStatusCode.LoggedInProceed);
+        //if (passResponse.FtpStatusCode != FtpStatusCode.LoggedInProceed)
+        //    _logger?.LogWarning("[CoreFtp] pass response was not 230: '{code} {msg}'", (int)passResponse.FtpStatusCode, passResponse.ResponseMessage);
+        if (passResponse == false)
+            _logger?.LogWarning("[CoreFtp] pass response false");
 
         IsAuthenticated = true;
 
@@ -327,7 +331,7 @@ public sealed class FtpClient : IFtpClient
 
         Features = await DetermineFeaturesAsync(cancellationToken);
         _directoryProvider = DetermineDirectoryProvider();
-        await EnableUTF8IfPossible();
+        await EnableUtf8IfPossible();
         await SetTransferMode(Configuration.Mode, Configuration.ModeSecondType);
 
         if (Configuration.BaseDirectory != "/")
@@ -435,13 +439,16 @@ public sealed class FtpClient : IFtpClient
                 ? $"{(char)transferMode} {secondType}"
                 : $"{(char)transferMode}"
         );
-        var response = await ControlStream.SendCommandReadAsync(typeCmd);
+        var response = await ControlStream.SendCommandReadAsync(typeCmd, FtpModelParser.ParseTypeAsync);
 
-        if (response.FtpStatusCode != FtpStatusCode.CommandOK)
-            _logger?.LogWarning("[CoreFtp] type response was not 200: '{code} {msg}'", (int)response.FtpStatusCode, response.ResponseMessage);
+        //if (response.FtpStatusCode != FtpStatusCode.CommandOK)
+        //    _logger?.LogWarning("[CoreFtp] type response was not 200: '{code} {msg}'", (int)response.FtpStatusCode, response.ResponseMessage);
 
-        if (response.IsSuccess == false)
-            throw new FtpException(response.ResponseMessage);
+        //if (response.IsSuccess == false)
+        //    throw new FtpException(response.ResponseMessage);
+
+        if (response == false)
+            throw new FtpException("type returned false");
     }
 
     public async Task<FtpResponse> SendCommandAsync(FtpCommandEnvelope envelope, CancellationToken token = default)
@@ -488,17 +495,17 @@ public sealed class FtpClient : IFtpClient
     {
         EnsureLoggedIn();
         _logger?.LogTrace("[CoreFtp] Determining features");
-        var response = await ControlStream.SendCommandReadAsync(FtpCommand.FEAT, cancellationToken);
+        var response = await ControlStream.SendCommandReadAsync(FtpCommand.FEAT, FtpModelParser.ParseFeatsAsync, cancellationToken);
 
-        if (response.FtpStatusCode != FtpStatusCode.EndFeats)
-            _logger?.LogWarning("[CoreFtp] feat response was not 211: '{code} {msg}'", (int)response.FtpStatusCode, response.ResponseMessage);
+        //if (response.FtpStatusCode != FtpStatusCode.EndFeats)
+        //    _logger?.LogWarning("[CoreFtp] feat response was not 211: '{code} {msg}'", (int)response.FtpStatusCode, response.ResponseMessage);
 
-        if (response.FtpStatusCode == FtpStatusCode.CommandSyntaxError || response.FtpStatusCode == FtpStatusCode.CommandNotImplemented)
-            return Enumerable.Empty<string>();
+        //if (response.FtpStatusCode == FtpStatusCode.CommandSyntaxError || response.FtpStatusCode == FtpStatusCode.CommandNotImplemented)
+        //    return Enumerable.Empty<string>();
 
-        var features = response.Data
+        var features = response.Feats
             .Where(x => !x.StartsWith(((int)FtpStatusCode.SystemHelpReply).ToString()) && !x.IsNullOrWhiteSpace())
-            .Select(x => x.Replace(Constants.CARRIAGE_RETURN, string.Empty).Trim())
+            .Select(x => x.Trim())
             .ToList();
 
         return features;
@@ -590,24 +597,24 @@ public sealed class FtpClient : IFtpClient
     {
         _logger?.LogTrace("[CoreFtp] Connecting to a data socket");
 
-        var epsvResult = await ControlStream.SendCommandReadAsync(FtpCommand.EPSV, cancellationToken);
+        var epsvResult = await ControlStream.SendCommandReadAsync(FtpCommand.EPSV, FtpModelParser.ParseEpsvAsync, cancellationToken);
 
         int? passivePortNumber;
-        if (epsvResult.FtpStatusCode == FtpStatusCode.EnteringExtendedPassive)
+        if (epsvResult.Ok)
         {
-            passivePortNumber = epsvResult.ResponseMessage.ExtractEpsvPortNumber();
+            passivePortNumber = epsvResult.Port;
         }
         else
         {
             // EPSV failed - try regular PASV
-            var pasvResult = await ControlStream.SendCommandReadAsync(FtpCommand.PASV, cancellationToken);
-            if (pasvResult.FtpStatusCode != FtpStatusCode.EnteringPassive)
-                throw new FtpException(pasvResult.ResponseMessage);
+            var pasvResult = await ControlStream.SendCommandReadAsync(FtpCommand.PASV, FtpModelParser.ParsePasvAsync, cancellationToken);
+            if (pasvResult.Ok == false)
+                throw new FtpException("pasv fail");
 
-            passivePortNumber = pasvResult.ResponseMessage.ExtractPasvPortNumber();
+            passivePortNumber = pasvResult.Port;
         }
 
-        if (!passivePortNumber.HasValue)
+        if (passivePortNumber.HasValue == false)
             throw new FtpException("Could not determine EPSV/PASV data port");
 
         return await ControlStream.OpenDataStreamAsync(Configuration.Host, passivePortNumber.Value, cancellationToken);
@@ -635,7 +642,7 @@ public sealed class FtpClient : IFtpClient
     /// Determine if the FTP server supports UTF8 encoding, and set it to the default if possible
     /// </summary>
     /// <returns></returns>
-    private async Task EnableUTF8IfPossible()
+    private async Task EnableUtf8IfPossible()
     {
         if (Equals(ControlStream.Encoding, Encoding.ASCII) && Features.Any(x => x == Constants.UTF8))
         {
@@ -647,7 +654,7 @@ public sealed class FtpClient : IFtpClient
             // If the server supports UTF8 it should already be enabled and this
             // command should not matter however there are conflicting drafts
             // about this so we'll just execute it to be safe.
-            await ControlStream.SendReadAsync("OPTS UTF8 ON");
+            await ControlStream.SendReadAsync("OPTS UTF8 ON", FtpModelParser.ParseOptsAsync);
         }
     }
 }

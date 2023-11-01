@@ -17,7 +17,7 @@ public static class StringExtensions
 
     internal static int? ExtractPasvPortNumber(this string operand)
     {
-        var regex = new Regex(@"([0-9]{1,3}[|,]){1,}[0-9]{1,3}", RegexOptions.Compiled);
+        var regex = new Regex(@"([0-9]{1,3}[|,]){1,}[0-9]{1,3}");
         var match = regex.Match(operand);
 
         if (!match.Success)
@@ -34,9 +34,9 @@ public static class StringExtensions
 
     internal static int? ExtractEpsvPortNumber(this string operand)
     {
-        var regex = new Regex(@"(?:[\|,])(?<PortNumber>\d+)(?:[\|,])", RegexOptions.Compiled);
+        var regex = new Regex(@"(?:[\|,])(?<PortNumber>\d+)(?:[\|,])");
         var match = regex.Match(operand);
-        if (!match.Success)
+        if (match.Success == false)
             return null;
 
         return int.Parse(match.Groups["PortNumber"].Value);
