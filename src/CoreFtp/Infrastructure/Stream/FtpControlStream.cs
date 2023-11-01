@@ -152,7 +152,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
             var response = new FtpResponse();
             var data = new List<string>();
 
-            foreach (string? line in await ReadLinesAsync(Encoding, token))
+            foreach (string line in await ReadLinesAsync(Encoding, token))
             {
                 token.ThrowIfCancellationRequested();
                 Logger?.LogDebug("[CoreFtp] {line}", line);
@@ -253,40 +253,14 @@ public sealed partial class FtpControlStream : System.IO.Stream
         BaseStream.WriteTimeout = milliseconds;
     }
 
-    //protected string? ReadLine(Encoding encoding, CancellationToken token)
-    //{
-    //    if (encoding == null)
-    //        throw new ArgumentNullException(nameof(encoding));
-    //
-    //    var data = new List<byte>();
-    //    var buffer = new byte[1];
-    //    string? line = null;
-    //
-    //    token.ThrowIfCancellationRequested();
-    //
-    //    while (Read(buffer, 0, buffer.Length) > 0)
-    //    {
-    //        token.ThrowIfCancellationRequested();
-    //        data.Add(buffer[0]);
-    //        if ((,r)buffer[0] != '\n')
-    //            continue;
-    //        line = encoding.GetString(data.ToArray()).Trim('\r', '\n');
-    //        break;
-    //    }
-    //
-    //    return line;
-    //}
+    protected override void Dispose(bool disposing)
+    {
+        Logger?.LogTrace("[CoreFtp] {msg}", IsDataConnection ? "Disposing of data connection" : "Disposing of control connection");
+        if (disposing) Disconnect();
+        base.Dispose(disposing);
+    }
 
-    //private IEnumerable<string?> ReadLines(CancellationToken token)
-    //{
-    //    string? line;
-    //    while ((line = ReadLine(Encoding, token)) != null)
-    //    {
-    //        yield return line;
-    //    }
-    //}
-
-    protected async Task ActivateEncryptionAsync()
+    private async Task ActivateEncryptionAsync()
     {
         if (!IsConnected)
             throw new InvalidOperationException("The FtpSocketStream object is not connected.");
@@ -309,9 +283,9 @@ public sealed partial class FtpControlStream : System.IO.Stream
         }
     }
 
-    protected async Task ConnectStreamAsync(CancellationToken token) => await ConnectStreamAsync(Configuration.Host, Configuration.Port, token);
+    private async Task ConnectStreamAsync(CancellationToken token) => await ConnectStreamAsync(Configuration.Host, Configuration.Port, token);
 
-    protected async Task ConnectStreamAsync(string host, int port, CancellationToken token)
+    private async Task ConnectStreamAsync(string host, int port, CancellationToken token)
     {
         try
         {
@@ -357,7 +331,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
         }
     }
 
-    protected async Task<Socket> ConnectSocketAsync(string host, int port, CancellationToken token)
+    private async Task<Socket> ConnectSocketAsync(string host, int port, CancellationToken token)
     {
         try
         {
@@ -378,14 +352,10 @@ public sealed partial class FtpControlStream : System.IO.Stream
         }
     }
 
-    protected override void Dispose(bool disposing)
-    {
-        Logger?.LogTrace("[CoreFtp] {msg}", IsDataConnection ? "Disposing of data connection" : "Disposing of control connection");
-        if (disposing) Disconnect();
-        base.Dispose(disposing);
-    }
+    [GeneratedRegex("^(?<statusCode>[0-9]{3}) (?<message>.*)$")]
+    private static partial Regex CreateFtpRegex();
 
-    protected async Task EncryptExplicitly(CancellationToken token)
+    private async Task EncryptExplicitly(CancellationToken token)
     {
         Logger?.LogDebug("[CoreFtp] Encrypting explicitly");
         var response = await SendReadAsync("AUTH TLS", token);
@@ -396,7 +366,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
         await ActivateEncryptionAsync();
     }
 
-    protected async Task EncryptImplicitly(CancellationToken token)
+    private async Task EncryptImplicitly(CancellationToken token)
     {
         Logger?.LogDebug("[CoreFtp] Encrypting implicitly");
         await ActivateEncryptionAsync();
@@ -408,15 +378,15 @@ public sealed partial class FtpControlStream : System.IO.Stream
         }
     }
 
-    protected async Task WriteLineAsync(string buf, CancellationToken cancellationToken)
+    private async Task WriteLineAsync(string buf, CancellationToken cancellationToken)
     {
         var data = Encoding.GetBytes($"{buf}\r\n");
         await WriteAsync(data, cancellationToken);
     }
 
-    protected async Task<ICollection<string>> ReadLinesAsync(Encoding encoding, CancellationToken cancellationToken)
+    private async Task<ICollection<string>> ReadLinesAsync(Encoding encoding, CancellationToken cancellationToken)
     {
-        const int MaxReadSize = 1024;
+        const int MaxReadSize = 512;
 
         if (encoding == null)
             throw new ArgumentNullException(nameof(encoding));
@@ -429,13 +399,36 @@ public sealed partial class FtpControlStream : System.IO.Stream
             count = await ReadAsync(new Memory<byte>(buffer), cancellationToken);
             if (count == 0) break;
             data.Write(buffer.AsSpan()[..count]);
-        } while (count == MaxReadSize);
+        }
+        while (count == MaxReadSize);
 
         return DirectoryProviderBase.SplitEncode(data.WrittenSpan, encoding);
     }
 
-    [GeneratedRegex("^(?<statusCode>[0-9]{3}) (?<message>.*)$")]
-    private static partial Regex CreateFtpRegex();
+    private async IAsyncEnumerable<string> ReadLineAsync_DEBUG(Encoding encoding, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        if (encoding == null)
+            throw new ArgumentNullException(nameof(encoding));
+
+        int count;
+        var data = new List<byte>(10);
+        byte[] single = new byte[1];
+
+        loop:
+        {
+            count = await ReadAsync(single, cancellationToken);
+            if (count == 0) yield break;
+
+            data.Add(single[0]);
+            if (single[0] == '\n')
+            {
+                string ascii = Encoding.ASCII.GetString(data.ToArray());
+                yield return ascii;
+                data.Clear();
+            }
+            goto loop;
+        }
+    }
 
     private bool OnValidateCertificate(X509Certificate _, X509Chain __, SslPolicyErrors errors)
         => Configuration.IgnoreCertificateErrors || errors == SslPolicyErrors.None;

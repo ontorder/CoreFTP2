@@ -1,4 +1,6 @@
-﻿namespace CoreFtp.Infrastructure;
+﻿#nullable enable
+
+namespace CoreFtp.Infrastructure;
 
 using Enum;
 using Extensions;
