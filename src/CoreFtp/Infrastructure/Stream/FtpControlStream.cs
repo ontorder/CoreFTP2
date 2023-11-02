@@ -411,7 +411,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
         Logger?.LogDebug("[CoreFtp] Encrypting explicitly");
         var response = await SendReadAsync("AUTH TLS", token);
 
-        if (!response.IsSuccess)
+        if (response.IsSuccess == false)
             throw new InvalidOperationException();
 
         await ActivateEncryptionAsync();

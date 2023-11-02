@@ -56,6 +56,15 @@ public partial class FtpModelParser
             if (parserState == FeatsParseStates.Header)
             {
                 if (line != "211-Features:") throw new InvalidOperationException();
+
+                var checkStatus = ParseStatus(line);
+                switch (checkStatus?.Code)
+                {
+                    case null: break;
+                    case (int)FtpStatusCode.CommandNotImplemented: return (true, Array.Empty<string>());
+                    case (int)FtpStatusCode.CommandSyntaxError: return (true, Array.Empty<string>());
+                }
+
                 parserState = FeatsParseStates.Body;
                 continue;
             }
@@ -164,7 +173,10 @@ public partial class FtpModelParser
         await using var e = reader.GetAsyncEnumerator();
         await e.MoveNextAsync();
         var status = ParseStatus(e.Current);
-        return status?.Code == (int)FtpStatusCode.SendPasswordCommand;
+        if (status == null) return false;
+        return status.Value.Code == (int)FtpStatusCode.SendPasswordCommand
+            || status.Value.Code == (int)FtpStatusCode.SendUserCommand
+            || status.Value.Code == (int)FtpStatusCode.LoggedInProceed;
     }
 
     [GeneratedRegex("^(?<statusCode>[0-9]{3}) (?<message>.*)$", RegexOptions.Compiled)]

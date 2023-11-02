@@ -152,21 +152,29 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
 
         try
         {
-            Logger?.LogDebug("[CoreFtp] ListDirectoryProvider: Listing {ftpNodeType}", ftpNodeType);
-            Stream = await FtpClient.ConnectDataStreamAsync(cancellationToken);
-            string arguments = sortBy switch
+            try
             {
-                DirSort.Alphabetical => "-1",
-                DirSort.AlphabeticalReverse => "-r",
-                DirSort.ModifiedTimestampReverse => "-t",
-                _ => String.Empty,
-            };
-            var listCmd = new FtpCommandEnvelope(FtpCommand.LIST, arguments);
-            var result = await FtpClient.ControlStream.SendCommandReadAsync(listCmd, FtpModelParser.ParseListAsync, cancellationToken);
+                Logger?.LogDebug("[CoreFtp] ListDirectoryProvider: Listing {ftpNodeType}", ftpNodeType);
+                Stream = await FtpClient.ConnectDataStreamAsync(cancellationToken);
+                string arguments = sortBy switch
+                {
+                    DirSort.Alphabetical => "-1",
+                    DirSort.AlphabeticalReverse => "-r",
+                    DirSort.ModifiedTimestampReverse => "-t",
+                    _ => String.Empty,
+                };
+                var listCmd = new FtpCommandEnvelope(FtpCommand.LIST, arguments);
+                var result = await FtpClient.ControlStream.SendCommandReadAsync(listCmd, FtpModelParser.ParseListAsync, cancellationToken);
 
-            //if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData))
-            //    throw new FtpException("Could not retrieve directory listing: " + result.ResponseMessage);
-            if (result == false) throw new FtpException("list");
+                //if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData))
+                //    throw new FtpException("Could not retrieve directory listing: " + result.ResponseMessage);
+                if (result == false) throw new FtpException("list");
+            }
+            catch (Exception initErr)
+            {
+                Logger?.LogError(initErr, "[CoreFtp] exception in list nodes");
+                yield break;
+            }
 
             bool first = true;
             var nodes = new List<FtpNodeInformation>();

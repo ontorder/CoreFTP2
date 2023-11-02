@@ -70,15 +70,11 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
 
     public override async IAsyncEnumerable<FtpNodeInformation> ListFilesAsyncEnum(DirSort? sortBy = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var e = ListNodesAsyncEnum(FtpNodeType.File, sortBy, cancellationToken).GetAsyncEnumerator();
-        while (await e.MoveNextAsync())
-            yield return e.Current;
-
         try
         {
             await FtpClient.DataSocketSemaphore.WaitAsync(cancellationToken);
-            //await foreach (var node in ListNodesAsyncEnum(FtpNodeType.File, sortBy, cancellationToken))
-            //    yield return node;
+            await foreach (var node in ListNodesAsyncEnum(FtpNodeType.File, sortBy, cancellationToken))
+                yield return node;
         }
         finally
         {
@@ -109,7 +105,7 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
                 throw new FtpException("Could not retrieve directory listing " + result.ResponseMessage);
 
             var nodes = new List<FtpNodeInformation>();
-            await foreach(var node in RetrieveDirectoryListingAsyncEnum(cancellationToken))
+            await foreach (var node in RetrieveDirectoryListingAsyncEnum(cancellationToken))
             {
                 if (node.IsNullOrWhiteSpace()) continue;
                 if (ftpNodeType == null || false == node.Contains($"type={nodeTypeString}")) continue;
@@ -137,30 +133,41 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
 
         try
         {
-            Logger?.LogDebug("[CoreFtp] MlsdDirectoryProvider: Listing {ftpNodeType}", ftpNodeType);
-            Stream = await FtpClient.ConnectDataStreamAsync(cancellationToken);
-            var result = await FtpClient.ControlStream.SendCommandReadAsync(new FtpCommandEnvelope(FtpCommand.MLSD), FtpModelParser.ParseMlsdAsync, cancellationToken);
+            IEnumerable<FtpNodeInformation> sortedNodes;
 
-            //if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData))
-            //    throw new FtpException("Could not retrieve directory listing: " + result.ResponseMessage);
-            if (result == false) throw new FtpException("mlds");
-
-            var nodes = new List<FtpNodeInformation>();
-            await foreach (var line in RetrieveDirectoryListingAsyncEnum(cancellationToken))
+            try
             {
-                if (line.IsNullOrWhiteSpace()) continue;
-                if (ftpNodeType.HasValue && !line.Contains($"type={nodeTypeString}")) continue;
-                nodes.Add(line.ToFtpNode());
+                Logger?.LogDebug("[CoreFtp] MlsdDirectoryProvider: Listing {ftpNodeType}", ftpNodeType);
+                Stream = await FtpClient.ConnectDataStreamAsync(cancellationToken);
+                var result = await FtpClient.ControlStream.SendCommandReadAsync(new FtpCommandEnvelope(FtpCommand.MLSD), FtpModelParser.ParseMlsdAsync, cancellationToken);
+
+                //if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData))
+                //    throw new FtpException("Could not retrieve directory listing: " + result.ResponseMessage);
+                if (result == false) throw new FtpException("mlds");
+
+                var nodes = new List<FtpNodeInformation>();
+                await foreach (var line in RetrieveDirectoryListingAsyncEnum(cancellationToken))
+                {
+                    if (line.IsNullOrWhiteSpace()) continue;
+                    if (ftpNodeType.HasValue && !line.Contains($"type={nodeTypeString}")) continue;
+                    nodes.Add(line.ToFtpNode());
+                }
+
+                sortedNodes = sortBy switch
+                {
+                    DirSort.Alphabetical => nodes.OrderBy(no => no.Name),
+                    DirSort.AlphabeticalReverse => nodes.OrderByDescending(no => no.Name),
+                    DirSort.ModifiedTimestampReverse => nodes.OrderByDescending(no => no.DateModified),
+                    null => nodes,
+                    _ => throw new Exception(),
+                };
+            }
+            catch (Exception initErr)
+            {
+                Logger?.LogError(initErr, "[CoreFtp] list nodes async enum exception");
+                yield break;
             }
 
-            IEnumerable<FtpNodeInformation> sortedNodes = sortBy switch
-            {
-                DirSort.Alphabetical => nodes.OrderBy(no => no.Name),
-                DirSort.AlphabeticalReverse => nodes.OrderByDescending(no => no.Name),
-                DirSort.ModifiedTimestampReverse => nodes.OrderByDescending(no => no.DateModified),
-                null => nodes,
-                _ => throw new Exception(),
-            };
             foreach (var node in sortedNodes)
                 yield return node;
         }
