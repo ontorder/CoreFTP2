@@ -149,10 +149,10 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         EnsureLoggedIn();
-        Logger?.LogDebug("[CoreFtp] ListDirectoryProvider: Listing {ftpNodeType}", ftpNodeType);
 
         try
         {
+            Logger?.LogDebug("[CoreFtp] ListDirectoryProvider: Listing {ftpNodeType}", ftpNodeType);
             Stream = await FtpClient.ConnectDataStreamAsync(cancellationToken);
             string arguments = sortBy switch
             {
@@ -162,10 +162,11 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
                 _ => String.Empty,
             };
             var listCmd = new FtpCommandEnvelope(FtpCommand.LIST, arguments);
-            var result = await FtpClient.ControlStream.SendCommandReadAsync(listCmd, cancellationToken);
+            var result = await FtpClient.ControlStream.SendCommandReadAsync(listCmd, FtpModelParser.ParseListAsync, cancellationToken);
 
-            if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData))
-                throw new FtpException("Could not retrieve directory listing: " + result.ResponseMessage);
+            //if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData))
+            //    throw new FtpException("Could not retrieve directory listing: " + result.ResponseMessage);
+            if (result == false) throw new FtpException("list");
 
             bool first = true;
             var nodes = new List<FtpNodeInformation>();

@@ -44,6 +44,8 @@ public sealed partial class FtpControlStream : System.IO.Stream
     protected SslStream? SslStream { get; set; }
     protected static Regex FtpRegex = CreateFtpRegex();
 
+    private const int SecondsToMilli = 1000;
+
     public bool IsConnected
     {
         get
@@ -186,7 +188,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
         try
         {
             token.ThrowIfCancellationRequested();
-            return await parser(ReadLineAsync_DEBUG(Encoding, token));
+            return await parser(ReadLineAsync_DEBUG2(Encoding, token));
         }
         finally
         {
@@ -292,8 +294,8 @@ public sealed partial class FtpControlStream : System.IO.Stream
 
     internal void ResetTimeouts()
     {
-        BaseStream.ReadTimeout = Configuration.TimeoutSeconds * 1000;
-        BaseStream.WriteTimeout = Configuration.TimeoutSeconds * 1000;
+        BaseStream.ReadTimeout = Configuration.TimeoutSeconds * SecondsToMilli;
+        BaseStream.WriteTimeout = Configuration.TimeoutSeconds * SecondsToMilli;
     }
 
     internal void SetTimeouts(int milliseconds)
@@ -388,7 +390,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
             var ipEndpoint = await DnsResolver.ResolveAsync(host, port, Configuration.IpVersion, token);
             var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp)
             {
-                ReceiveTimeout = Configuration.TimeoutSeconds * 1000
+                ReceiveTimeout = Configuration.TimeoutSeconds * SecondsToMilli
             };
             await socket.ConnectAsync(ipEndpoint);
             socket.LingerState = new LingerOption(true, 0);
@@ -454,6 +456,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
         return DirectoryProviderBase.SplitEncode(data.WrittenSpan, encoding);
     }
 
+    // UNDONE DEBUG RIFARE onestamente non sarebbe male evitare di estendere Stream
     private async IAsyncEnumerable<string> ReadLineAsync_DEBUG(Encoding encoding, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         if (encoding == null)
@@ -463,8 +466,9 @@ public sealed partial class FtpControlStream : System.IO.Stream
         var data = new List<byte>(10);
         byte[] single = new byte[1];
 
-        loop:
+    loop:
         {
+            await this.Socket.ReceiveAsync(single, SocketFlags.Peek, cancellationToken);
             count = await ReadAsync(single, cancellationToken);
             if (count == 0) yield break;
 
@@ -477,6 +481,48 @@ public sealed partial class FtpControlStream : System.IO.Stream
                 yield return ascii.TrimEnd();
                 data.Clear();
             }
+            goto loop;
+        }
+    }
+
+    private async IAsyncEnumerable<string> ReadLineAsync_DEBUG2(Encoding encoding, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        if (encoding == null)
+            throw new ArgumentNullException(nameof(encoding));
+
+        const int MaxReadSize = 512;
+        const byte Lf = (byte)'\n';
+
+        int count;
+        var data = new List<byte>(10);
+        byte[] peekBuf = new byte[MaxReadSize];
+
+    loop:
+        {
+            int peekCount = await this.Socket.ReceiveAsync(peekBuf, SocketFlags.Peek, cancellationToken);
+            if (peekCount == 0) yield break;
+
+            int pos = Array.IndexOf(peekBuf, Lf);
+            if (pos < 0)
+            {
+                byte[] accum = new byte[peekCount];
+                int accumCount = await this.Socket.ReceiveAsync(accum, cancellationToken);
+                if (accumCount != accum.Length) throw new Exception("wtf");
+                data.AddRange(peekBuf);
+                goto loop;
+            }
+
+            byte[] bufToLf = new byte[pos + 1];
+            int readCount = await this.Socket.ReceiveAsync(bufToLf, cancellationToken);
+            if (readCount != bufToLf.Length) throw new Exception("wtf");
+
+            data.AddRange(bufToLf);
+            if (data.Count > 100_000) throw new ArgumentOutOfRangeException();
+
+            string ascii = Encoding.ASCII.GetString(data.ToArray());
+            yield return ascii.TrimEnd();
+
+            data.Clear();
             goto loop;
         }
     }

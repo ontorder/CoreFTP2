@@ -82,8 +82,7 @@ public sealed class FtpClient : IFtpClient
         if (pwdResponse.Ok == false)
             throw new FtpException("pwd fail");
 
-        const char TrimChar = '"';
-
+        //const char TrimChar = '"';
         //if (pwdResponse.ResponseMessage.Contains(TrimChar) == false)
         //{
         //    _logger?.LogWarning("[CoreFtp] pwd failed? '{code} {resp}'\ncwd: '{code} {cwd}'",
@@ -256,16 +255,23 @@ public sealed class FtpClient : IFtpClient
 
     public async IAsyncEnumerable<FtpNodeInformation> ListFilesAsyncEnum(DirSort? sortBy = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        EnsureLoggedIn();
         try
         {
-            EnsureLoggedIn();
             _logger?.LogDebug("[CoreFtp] Listing files in {WorkingDirectory}", WorkingDirectory);
             await foreach (var file in _directoryProvider.ListFilesAsyncEnum(sortBy, cancellationToken))
                 yield return file;
         }
         finally
         {
-            await ControlStream.GetResponseAsync(cancellationToken);
+            try
+            {
+                await ControlStream.GetResponseAsync(cancellationToken);
+            }
+            catch (Exception respErr)
+            {
+                Logger.LogError(respErr, "[CoreFtp] exception in list files");
+            }
         }
     }
 

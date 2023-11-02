@@ -70,11 +70,15 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
 
     public override async IAsyncEnumerable<FtpNodeInformation> ListFilesAsyncEnum(DirSort? sortBy = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        var e = ListNodesAsyncEnum(FtpNodeType.File, sortBy, cancellationToken).GetAsyncEnumerator();
+        while (await e.MoveNextAsync())
+            yield return e.Current;
+
         try
         {
             await FtpClient.DataSocketSemaphore.WaitAsync(cancellationToken);
-            await foreach (var node in ListNodesAsyncEnum(FtpNodeType.File, sortBy, cancellationToken))
-                yield return node;
+            //await foreach (var node in ListNodesAsyncEnum(FtpNodeType.File, sortBy, cancellationToken))
+            //    yield return node;
         }
         finally
         {
@@ -130,15 +134,16 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
                 : "dir";
 
         EnsureLoggedIn();
-        Logger?.LogDebug("[CoreFtp} MlsdDirectoryProvider: Listing {ftpNodeType}", ftpNodeType);
 
         try
         {
+            Logger?.LogDebug("[CoreFtp] MlsdDirectoryProvider: Listing {ftpNodeType}", ftpNodeType);
             Stream = await FtpClient.ConnectDataStreamAsync(cancellationToken);
-            var result = await FtpClient.ControlStream.SendCommandReadAsync(new FtpCommandEnvelope(FtpCommand.MLSD), cancellationToken);
+            var result = await FtpClient.ControlStream.SendCommandReadAsync(new FtpCommandEnvelope(FtpCommand.MLSD), FtpModelParser.ParseMlsdAsync, cancellationToken);
 
-            if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData))
-                throw new FtpException("Could not retrieve directory listing: " + result.ResponseMessage);
+            //if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData))
+            //    throw new FtpException("Could not retrieve directory listing: " + result.ResponseMessage);
+            if (result == false) throw new FtpException("mlds");
 
             var nodes = new List<FtpNodeInformation>();
             await foreach (var line in RetrieveDirectoryListingAsyncEnum(cancellationToken))

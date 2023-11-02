@@ -5,6 +5,7 @@ using CoreFtp.Infrastructure.Extensions;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Reflection.PortableExecutable;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
@@ -72,6 +73,24 @@ public partial class FtpModelParser
             }
         }
         return (false, null);
+    }
+
+    public static async Task<bool> ParseListAsync(IAsyncEnumerable<string> reader)
+    {
+        await using var e = reader.GetAsyncEnumerator();
+        await e.MoveNextAsync();
+        var status = ParseStatus(e.Current);
+        if (status == null) return false;
+        return status.Value.Code == (int)FtpStatusCode.DataAlreadyOpen || status.Value.Code == (int)FtpStatusCode.OpeningData;
+    }
+
+    public static async Task<bool> ParseMlsdAsync(IAsyncEnumerable<string> reader)
+    {
+        await using var e = reader.GetAsyncEnumerator();
+        await e.MoveNextAsync();
+        var status = ParseStatus(e.Current);
+        if (status == null) return false;
+        return status.Value.Code == (int)FtpStatusCode.DataAlreadyOpen || status.Value.Code == (int)FtpStatusCode.OpeningData;
     }
 
     public static async Task<(bool Ok, ICollection<string>? Motd)> ParseMotdAsync(IAsyncEnumerable<string> reader)
@@ -151,7 +170,7 @@ public partial class FtpModelParser
     [GeneratedRegex("^(?<statusCode>[0-9]{3}) (?<message>.*)$", RegexOptions.Compiled)]
     private static partial Regex CreateStdStatusRegex();
 
-    [GeneratedRegex("^(?<statusCode>[0-9]{3}) \"(?<path>.*)\"$", RegexOptions.Compiled)]
+    [GeneratedRegex("^(?<statusCode>[0-9]{3}) \"(?<path>.*)\".*$", RegexOptions.Compiled)]
     private static partial Regex CreatePwdRegex();
 
     private static (int Code, string Msg)? ParseStatus(string statusString)
