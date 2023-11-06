@@ -133,7 +133,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
 
     public override void Flush()
     {
-        if (!IsConnected)
+        if (false == IsConnected)
             throw new InvalidOperationException("The FtpSocketStream object is not connected.");
 
         NetworkStream?.Flush();

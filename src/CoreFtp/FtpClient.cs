@@ -354,7 +354,7 @@ public sealed class FtpClient : IFtpClient
     public async Task LogOutAsync(CancellationToken cancellationToken = default)
     {
         await IgnoreStaleData(cancellationToken);
-        if (!IsConnected)
+        if (IsConnected == false)
             return;
 
         _logger?.LogTrace("[CoreFtp] Logging out");
@@ -477,7 +477,7 @@ public sealed class FtpClient : IFtpClient
 
     private async Task IgnoreStaleData(CancellationToken cancellationToken)
     {
-        if (IsConnected && ControlStream.SocketDataAvailable() is int dataSize)
+        if (IsConnected && ControlStream.SocketDataAvailable() is int dataSize && dataSize > 0)
         {
             var staleData = await ControlStream.GetResponseAsync(cancellationToken);
             _logger?.LogWarning("[CoreFtp] Stale data detected ({size}): {msg}", dataSize, staleData.ResponseMessage);
