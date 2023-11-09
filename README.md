@@ -19,65 +19,53 @@ Usage of this small library was intended to be as simple as possible. The integr
 
 #### Connecting to an FTP/S server ####
 Connecting to FTP/s supports both Explicit and Implicit modes.
-```
-using ( var ftpClient = new FtpClient( new FtpClientConfiguration
-                                             {
-                                                 Host = "localhost",
-                                                 Username = "user",
-                                                 Password = "password",
-                                                 Port = 990,
-                                                 EncryptionType = FtpEncryption.Implicit,
-                                                 IgnoreCertificateErrors = true
-                                             } ) )
+```cs
+var cfg = new FtpClientConfiguration
 {
-    await ftpClient.LoginAsync();
-}
-
+    Host = "localhost",
+    Username = "user",
+    Password = "password",
+    Port = 990,
+    EncryptionType = FtpEncryption.Implicit,
+    IgnoreCertificateErrors = true
+};
+using var ftpClient = new FtpClient(cfg);
+await ftpClient.LoginAsync();
 ```
 
 #### Downloading a file to a filestream on local disk ####
 
-```
-using ( var ftpClient = new FtpClient( new FtpClientConfiguration
-                                             {
-                                                 Host = "localhost",
-                                                 Username = "user",
-                                                 Password = "password"
-                                             } ) )
+```cs
+var cfg = new FtpClientConfiguration
 {
-	var tempFile = new FileInfo( "C:\\test.png" );
-    await ftpClient.LoginAsync();
-    using ( var ftpReadStream = await ftpClient.OpenFileReadStreamAsync( "test.png" ) )
-    {
-        using ( var fileWriteStream = tempFile.OpenWrite() )
-        {
-            await ftpReadStream.CopyToAsync( fileWriteStream );
-        }
-    }
-}
-
+    Host = "localhost",
+    Username = "user",
+    Password = "password"
+};
+using var ftpClient = new FtpClient(cfg);
+var tempFile = new FileInfo(@"C:\test.png");
+await ftpClient.LoginAsync();
+using var ftpReadStream = await ftpClient.OpenFileReadStreamAsync("test.png");
+using var fileWriteStream = tempFile.OpenWrite();
+await ftpReadStream.CopyToAsync(fileWriteStream);
 ```
 
 #### Uploading from a local filestream to the FTP server ####
 
-```
-using ( var ftpClient = new FtpClient( new FtpClientConfiguration
-                                    {
-                                        Host = "localhost",
-                                        Username = "user",
-                                        Password = "password"
-                                    } ) )
+```cs
+var cfg = new FtpClientConfiguration
 {
-	var fileinfo = new FileInfo( "C:\\test.png" );
-    await ftpClient.LoginAsync();    
+    Host = "localhost",
+    Username = "user",
+    Password = "password"
+};
+using var ftpClient = new FtpClient(cfg);
+var fileinfo = new FileInfo(@"C:\test.png");
+await ftpClient.LoginAsync();    
 
-    using ( var writeStream = await ftpClient.OpenFileWriteStreamAsync( "test.png" ) )
-    {
-        var fileReadStream = fileinfo.OpenRead();
-        await fileReadStream.CopyToAsync( writeStream );
-    }
-}
-
+using var writeStream = await ftpClient.OpenFileWriteStreamAsync("test.png");
+var fileReadStream = fileinfo.OpenRead();
+await fileReadStream.CopyToAsync(writeStream);
 ```
 
 ### Integration Tests ###
