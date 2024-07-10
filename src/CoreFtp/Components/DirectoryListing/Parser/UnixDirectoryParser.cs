@@ -5,9 +5,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
-
 #nullable enable
-
 namespace CoreFtp.Components.DirectoryListing.Parser;
 
 public sealed partial class UnixDirectoryParser : IListDirectoryParser

@@ -6,123 +6,117 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+#nullable enable
+namespace CoreFtp.Components.DnsResolution;
 
-namespace CoreFtp.Components.DnsResolution
+public sealed class DnsResolver : IDnsResolver
 {
-    public sealed class DnsResolver : IDnsResolver
-    {
-        private readonly ICache cache;
+    private readonly ICache _cache;
 
-        public DnsResolver()
+    public DnsResolver()
+        => _cache = new InMemoryCache();
+
+    public async Task<IPEndPoint?> ResolveAsync(string endpoint, int port, IpVersion ipVersion = IpVersion.IpV4, CancellationToken cancellation = default)
+    {
+        string cacheKey = $"{endpoint}:{port}:{ipVersion}";
+
+        if (port < IPEndPoint.MinPort || port > IPEndPoint.MaxPort)
+            throw new ArgumentOutOfRangeException(nameof(port));
+
+        if (_cache.HasKey(cacheKey))
+            return _cache.Get<IPEndPoint>(cacheKey);
+
+        var addressFamily = ipVersion.HasFlag(IpVersion.IpV4)
+            ? AddressFamily.InterNetwork
+            : AddressFamily.InterNetworkV6;
+
+
+        cancellation.ThrowIfCancellationRequested();
+
+        IPEndPoint? ipEndpoint;
+
+        var ipAddress = TryGetIpAddress(endpoint);
+        if (ipAddress != null)
         {
-            cache = new InMemoryCache();
+            ipEndpoint = new IPEndPoint(ipAddress, port);
+            _cache.Add(cacheKey, ipEndpoint, TimeSpan.FromMinutes(60));
+            return ipEndpoint;
         }
 
-        public async Task<IPEndPoint> ResolveAsync(string endpoint, int port, IpVersion ipVersion = IpVersion.IpV4, CancellationToken token = default)
+        try
         {
-            string cacheKey = $"{endpoint}:{port}:{ipVersion}";
+            var allAddresses = await Dns.GetHostAddressesAsync(endpoint, cancellation);
 
-            if (port < IPEndPoint.MinPort || port > IPEndPoint.MaxPort)
-                throw new ArgumentOutOfRangeException(nameof(port));
-
-            if (cache.HasKey(cacheKey))
-                return cache.Get<IPEndPoint>(cacheKey);
-
-            var addressFamily = ipVersion.HasFlag(IpVersion.IpV4)
-                ? AddressFamily.InterNetwork
-                : AddressFamily.InterNetworkV6;
-
-
-            token.ThrowIfCancellationRequested();
-
-            IPEndPoint ipEndpoint;
-
-            var ipAddress = TryGetIpAddress(endpoint);
-
-            if (ipAddress != null)
+            var firstAddressInFamily = allAddresses.FirstOrDefault(x => x.AddressFamily == addressFamily);
+            if (firstAddressInFamily != null)
             {
-                ipEndpoint = new IPEndPoint(ipAddress, port);
-                cache.Add(cacheKey, ipEndpoint, TimeSpan.FromMinutes(60));
+                ipEndpoint = new IPEndPoint(firstAddressInFamily, port);
+                _cache.Add(cacheKey, ipEndpoint, TimeSpan.FromMinutes(60));
                 return ipEndpoint;
             }
 
-            try
+            if (addressFamily == AddressFamily.InterNetwork && ipVersion.HasFlag(IpVersion.IpV6))
             {
-                var allAddresses = await Dns.GetHostAddressesAsync(endpoint);
-
-                var firstAddressInFamily = allAddresses.FirstOrDefault(x => x.AddressFamily == addressFamily);
-                if (firstAddressInFamily != null)
+                ipEndpoint = await ResolveAsync(endpoint, port, IpVersion.IpV6, cancellation);
+                if (ipEndpoint != null)
                 {
-                    ipEndpoint = new IPEndPoint(firstAddressInFamily, port);
-                    cache.Add(cacheKey, ipEndpoint, TimeSpan.FromMinutes(60));
+                    _cache.Add(cacheKey, ipEndpoint, TimeSpan.FromMinutes(60));
                     return ipEndpoint;
                 }
+            }
 
+            var firstAddress = allAddresses.FirstOrDefault();
+            if (firstAddress == null)
+                return null;
 
-                if (addressFamily == AddressFamily.InterNetwork && ipVersion.HasFlag(IpVersion.IpV6))
-                {
-                    ipEndpoint = await ResolveAsync(endpoint, port, IpVersion.IpV6, token);
+            switch (firstAddress.AddressFamily)
+            {
+                case AddressFamily.InterNetwork:
+                    ipEndpoint = new IPEndPoint(firstAddress.MapToIPv6(), port);
+                    break;
 
-                    if (ipEndpoint != null)
-                    {
-                        cache.Add(cacheKey, ipEndpoint, TimeSpan.FromMinutes(60));
-                        return ipEndpoint;
-                    }
-                }
+                case AddressFamily.InterNetworkV6:
+                    ipEndpoint = new IPEndPoint(firstAddress.MapToIPv4(), port);
+                    break;
 
-                var firstAddress = allAddresses.FirstOrDefault();
-                if (firstAddress == null)
+                default:
                     return null;
-
-                switch (firstAddress.AddressFamily)
-                {
-                    case AddressFamily.InterNetwork:
-                        ipEndpoint = new IPEndPoint(firstAddress.MapToIPv6(), port);
-                        break;
-
-                    case AddressFamily.InterNetworkV6:
-                        ipEndpoint = new IPEndPoint(firstAddress.MapToIPv4(), port);
-                        break;
-                    default:
-                        return null;
-                }
-
-                cache.Add(cacheKey, ipEndpoint, TimeSpan.FromMinutes(60));
-
-                return ipEndpoint;
             }
-            catch
-            {
-                return null;
-            }
+
+            _cache.Add(cacheKey, ipEndpoint, TimeSpan.FromMinutes(60));
+
+            return ipEndpoint;
         }
-
-        private IPAddress TryGetIpAddress(string endpoint)
+        catch
         {
-            var tokens = endpoint.Split(':');
-
-            string endpointToParse = endpoint;
-
-            if (tokens.Length == 0)
-                return null;
-
-            if (tokens.Length <= 2)
-            {
-                // IPv4
-                endpointToParse = tokens[0];
-            }
-            else if (tokens.Length > 2)
-            {
-                // IPv6
-                endpointToParse = tokens[0].StartsWith("[") && tokens[tokens.Length - 2].EndsWith("]")
-                    ? string.Join(":", tokens.Take(tokens.Length - 1).ToArray())
-                    : endpoint;
-            }
-
-            IPAddress address;
-            return IPAddress.TryParse(endpointToParse, out address)
-                ? address
-                : null;
+            return null;
         }
+    }
+
+    private static IPAddress? TryGetIpAddress(string endpoint)
+    {
+        var tokens = endpoint.Split(':');
+
+        string endpointToParse = endpoint;
+
+        if (tokens.Length == 0)
+            return null;
+
+        if (tokens.Length <= 2)
+        {
+            // IPv4
+            endpointToParse = tokens[0];
+        }
+        else if (tokens.Length > 2)
+        {
+            // IPv6
+            endpointToParse = tokens[0].StartsWith("[") && tokens[^2].EndsWith("]")
+                ? string.Join(":", tokens.Take(tokens.Length - 1).ToArray())
+                : endpoint;
+        }
+
+        return IPAddress.TryParse(endpointToParse, out IPAddress? address)
+            ? address
+            : null;
     }
 }

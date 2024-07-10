@@ -203,9 +203,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
         await socketStream.ConnectStreamAsync(host, port, token);
 
         if (IsEncrypted)
-        {
             await socketStream.ActivateEncryptionAsync();
-        }
         return socketStream;
     }
 
@@ -334,7 +332,8 @@ public sealed partial class FtpControlStream : System.IO.Stream
         }
     }
 
-    private async Task ConnectStreamAsync(CancellationToken token) => await ConnectStreamAsync(Configuration.Host, Configuration.Port, token);
+    private async Task ConnectStreamAsync(CancellationToken token)
+        => await ConnectStreamAsync(Configuration.Host, Configuration.Port, token);
 
     private async Task ConnectStreamAsync(string host, int port, CancellationToken token)
     {
@@ -343,6 +342,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
             await Semaphore.WaitAsync(token);
             Logger?.LogDebug("[CoreFtp] Connecting stream on {host}:{port}", host, port);
             Socket = await ConnectSocketAsync(host, port, token);
+            if (Socket == null) return;
             BaseStream = new NetworkStream(Socket);
             ResetTimeouts();
             LastActivity = DateTime.Now;
@@ -382,12 +382,17 @@ public sealed partial class FtpControlStream : System.IO.Stream
         }
     }
 
-    private async Task<Socket> ConnectSocketAsync(string host, int port, CancellationToken token)
+    private async Task<Socket?> ConnectSocketAsync(string host, int port, CancellationToken token)
     {
         try
         {
             Logger?.LogDebug("[CoreFtp] Connecting");
             var ipEndpoint = await DnsResolver.ResolveAsync(host, port, Configuration.IpVersion, token);
+            if (ipEndpoint == null)
+            {
+                Logger?.LogWarning("[CoreFtp] WARNING endpoint was null for {host}:{port}", host, port);
+                return null;
+            }
             var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp)
             {
                 ReceiveTimeout = Configuration.TimeoutSeconds * SecondsToMilli
