@@ -4,8 +4,6 @@ using CoreFtp.Enum;
 using CoreFtp.Infrastructure.Extensions;
 using System;
 using System.Collections.Generic;
-using System.Numerics;
-using System.Reflection.PortableExecutable;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
@@ -38,7 +36,7 @@ public partial class FtpModelParser
         if (status == null) return (false, null);
         if (status.Value.Code != (int)FtpStatusCode.EnteringExtendedPassive) return (false, null);
 
-        var regex = new Regex(@"(?:[\|,])(?<PortNumber>\d+)(?:[\|,])");
+        var regex = RegexParseEpsvPort();
         var match = regex.Match(status.Value.Msg);
         if (match.Success == false) return (false, null);
 
@@ -196,4 +194,7 @@ public partial class FtpModelParser
 
         return (int.Parse(ftpStatusCode), responseMessage);
     }
+
+    [GeneratedRegex("(?:[\\|,])(?<PortNumber>\\d+)(?:[\\|,])")]
+    private static partial Regex RegexParseEpsvPort();
 }

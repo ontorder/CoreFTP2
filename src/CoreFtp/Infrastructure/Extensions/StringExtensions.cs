@@ -1,10 +1,12 @@
-﻿using System.Linq;
+﻿using CoreFtp.Enum;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
-using CoreFtp.Enum;
 
 namespace CoreFtp.Infrastructure.Extensions;
 
-public static class StringExtensions
+public static partial class StringExtensions
 {
     internal static bool IsNullOrEmpty(this string operand)
         => string.IsNullOrEmpty(operand);
@@ -17,7 +19,7 @@ public static class StringExtensions
 
     internal static int? ExtractPasvPortNumber(this string operand)
     {
-        var regex = new Regex(@"([0-9]{1,3}[|,]){1,}[0-9]{1,3}");
+        var regex = RegexParsePasvPort();
         var match = regex.Match(operand);
 
         if (!match.Success)
@@ -34,7 +36,7 @@ public static class StringExtensions
 
     internal static int? ExtractEpsvPortNumber(this string operand)
     {
-        var regex = new Regex(@"(?:[\|,])(?<PortNumber>\d+)(?:[\|,])");
+        var regex = RegexParseEpsvPort();
         var match = regex.Match(operand);
         if (match.Success == false)
             return null;
@@ -49,26 +51,41 @@ public static class StringExtensions
         _ => FtpNodeType.SymbolicLink,
     };
 
+    // TODO parsing protocol shouldn't be randomly in an extension method
+    // TODO im pretty sure spaces are well defined and parsing shouldn't use trim
+    // example: type=file;size=4222572089;modify=20251023213220.665;perms=awr; filename.MP4
     internal static FtpNodeInformation ToFtpNode(this string operand)
     {
-        var dictionary = operand
-            .Split(';')
-            .Select(s => s.Split('='))
-            .ToDictionary(
-                strings => strings.Length == 2
-                    ? strings[0]
-                    : "name",
-                strings => strings.Length == 2
-                    ? strings[1]
-                    : strings[0]
-            );
+        var tokens = operand.Split(';', 5).ToArray();
+        if (tokens.Length != 5) throw new InvalidDataException(operand);
+
+        var filename = tokens[4][0] == ' ' ? tokens[4][1..] : tokens[4];
+        var nodeType = string.Empty;
+        var dateModified = string.Empty;
+        var size = string.Empty;
+        for (var id = 0; id < 4; ++id)
+        {
+            var split = tokens[id].Split('=');
+            switch (split[0][0])
+            {
+                case 't': nodeType = split[1]; break;
+                case 'm': dateModified = split[1]; break;
+                case 's': size = split[1]; break;
+            }
+        }
 
         return new FtpNodeInformation
         {
-            NodeType = dictionary.GetValueOrDefault("type").Trim().ToNodeType(),
-            Name = dictionary.GetValueOrDefault("name").Trim(),
-            Size = dictionary.GetValueOrDefault("size").ParseOrDefault(),
-            DateModified = dictionary.GetValueOrDefault("modify").ParseExactOrDefault("yyyyMMddHHmmss", "yyyyMMddHHmmss.fff")
+            NodeType = nodeType.Trim().ToNodeType(),
+            Name = filename,
+            Size = size.ParseOrDefault(),
+            DateModified = dateModified.ParseExactOrDefault("yyyyMMddHHmmss", "yyyyMMddHHmmss.fff")
         };
     }
+
+    [GeneratedRegex("(?:[\\|,])(?<PortNumber>\\d+)(?:[\\|,])")]
+    private static partial Regex RegexParseEpsvPort();
+
+    [GeneratedRegex("([0-9]{1,3}[|,]){1,}[0-9]{1,3}")]
+    private static partial Regex RegexParsePasvPort();
 }
