@@ -4,7 +4,6 @@ using CoreFtp.Infrastructure;
 using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -19,7 +18,7 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
 {
     private readonly List<IListDirectoryParser> _directoryParsers;
 
-    public ListDirectoryProvider(Encoding encoding, ILogger? logger, Stream stream)
+    public ListDirectoryProvider(Encoding encoding, ILogger? logger, Infrastructure.Stream.FtpControlStream stream)
         : base(logger, encoding, stream)
     {
         _directoryParsers = new List<IListDirectoryParser>
@@ -77,7 +76,7 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
         }
         finally
         {
-            Stream.Dispose();
+            FtpStream.Dispose(true);
         }
     }
 
@@ -109,7 +108,7 @@ internal sealed class ListDirectoryProvider : DirectoryProviderBase
         }
         finally
         {
-            Stream.Dispose();
+            FtpStream.Dispose(true);
         }
     }
 }

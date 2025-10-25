@@ -17,7 +17,7 @@ namespace CoreFtp.Components.DirectoryListing;
 
 internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
 {
-    public MlsdDirectoryProvider(Encoding encoding, ILogger? logger, System.IO.Stream stream)
+    public MlsdDirectoryProvider(Encoding encoding, ILogger? logger, Infrastructure.Stream.FtpControlStream stream)
         : base(logger, encoding, stream)
     {
     }
@@ -60,7 +60,7 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
         }
         finally
         {
-            Stream.Dispose();
+            FtpStream.Dispose(true);
         }
     }
 
@@ -113,7 +113,7 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
         }
         finally
         {
-            Stream.Dispose();
+            FtpStream.Dispose(true);
         }
     }
 }

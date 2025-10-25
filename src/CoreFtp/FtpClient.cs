@@ -386,7 +386,8 @@ public sealed class FtpClient : IFtpClient
     public async Task<Stream> OpenFileReadStreamAsync(string fileName, CancellationToken cancellationToken)
     {
         _logger?.LogDebug("[CoreFtp] Opening file read stream for {fileName}", fileName);
-        return await OpenFileStreamAsync(fileName, FtpCommand.RETR, cancellationToken);
+        var fcs = await OpenFileStreamAsync(fileName, FtpCommand.RETR, cancellationToken);
+        return fcs.GetStream();
     }
 
     /// <summary>
@@ -403,7 +404,8 @@ public sealed class FtpClient : IFtpClient
             .Where(x => !x.IsNullOrWhiteSpace())
             .ToList();
         await CreateDirectoryStructureRecursively(segments.Take(segments.Count - 1).ToArray(), filePath.StartsWith("/"), cancellationToken);
-        return await OpenFileStreamAsync(filePath, FtpCommand.STOR, cancellationToken);
+        var fcs = await OpenFileStreamAsync(filePath, FtpCommand.STOR, cancellationToken);
+        return fcs.GetStream();
     }
 
     /// <summary>
@@ -487,7 +489,7 @@ public sealed class FtpClient : IFtpClient
     {
         _logger?.LogDebug("[CoreFtp] Disposing of FtpClient");
         Task.WaitAny(LogOutAsync(default));
-        ControlStream.Dispose();
+        ControlStream.Dispose(disposing: true);
         DataSocketSemaphore.Dispose();
     }
 
@@ -586,7 +588,7 @@ public sealed class FtpClient : IFtpClient
     /// <param name="fileName"></param>
     /// <param name="command"></param>
     /// <returns></returns>
-    private async Task<Stream> OpenFileStreamAsync(string fileName, FtpCommand command, CancellationToken cancellationToken)
+    private async Task<FtpControlStream> OpenFileStreamAsync(string fileName, FtpCommand command, CancellationToken cancellationToken)
     {
         _logger?.LogDebug("[CoreFtp] Opening filestream for {fileName}, {command}", fileName, command);
         var dataStream = await ConnectDataStreamAsync(cancellationToken);
@@ -615,7 +617,7 @@ public sealed class FtpClient : IFtpClient
     /// Produces a data socket using Passive (PASV) or Extended Passive (EPSV) mode
     /// </summary>
     /// <returns></returns>
-    private async Task<Stream> ConnectDataStreamAsync(CancellationToken cancellationToken)
+    private async Task<FtpControlStream> ConnectDataStreamAsync(CancellationToken cancellationToken)
     {
         _logger?.LogTrace("[CoreFtp] Connecting to a data socket");
 
@@ -684,7 +686,7 @@ public sealed class FtpClient : IFtpClient
         }
     }
 
-    private IDirectoryProvider InitDirectoryProvider(Stream stream)
+    private IDirectoryProvider InitDirectoryProvider(FtpControlStream stream)
         => _directoryProviderType switch
         {
             DirectoryProviderType.mlsd => new MlsdDirectoryProvider(ControlStream.Encoding, _logger, stream),
