@@ -29,20 +29,20 @@ public sealed partial class FtpControlStream : System.IO.Stream
     public Encoding Encoding { get; set; } = Encoding.ASCII;
     public bool IsEncrypted => SslStream != null && SslStream.IsEncrypted;
     public override long Length => NetworkStream?.Length ?? 0;
-    public ILogger Logger;
+    public ILogger? Logger;
     public override long Position { get => NetworkStream?.Position ?? 0; set => throw new InvalidOperationException(); }
 
     protected System.IO.Stream? BaseStream;
     protected readonly FtpClientConfiguration Configuration;
     protected readonly IDnsResolver DnsResolver;
+    protected static Regex FtpRegex = CreateFtpRegex();
+    protected Socket? FtpSocket;
     protected DateTime LastActivity = DateTime.Now;
     protected System.IO.Stream NetworkStream => SslStream ?? BaseStream;
     protected readonly SemaphoreSlim ReceiveSemaphore = new(1, 1);
     protected readonly SemaphoreSlim Semaphore = new(1, 1);
-    protected Socket? Socket;
     protected int SocketPollInterval { get; } = 15000;
     protected SslStream? SslStream { get; set; }
-    protected static Regex FtpRegex = CreateFtpRegex();
 
     private const int SecondsToMilli = 1000;
 
@@ -52,7 +52,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
         {
             try
             {
-                if (Socket == null || !Socket.Connected || !CanRead || !CanWrite)
+                if (FtpSocket == null || !FtpSocket.Connected || !CanRead || !CanWrite)
                 {
                     Disconnect();
                     return false;
@@ -61,7 +61,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
                 if (LastActivity.HasIntervalExpired(DateTime.Now, SocketPollInterval))
                 {
                     Logger?.LogDebug("[CoreFtp] Polling connection");
-                    if (Socket.Poll(500000, SelectMode.SelectRead) && Socket.Available == 0)
+                    if (FtpSocket.Poll(500000, SelectMode.SelectRead) && FtpSocket.Available == 0)
                     {
                         Disconnect();
                         return false;
@@ -118,7 +118,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
         {
             BaseStream?.Dispose();
             SslStream?.Dispose();
-            Socket?.Shutdown(SocketShutdown.Both);
+            FtpSocket?.Shutdown(SocketShutdown.Both);
         }
         catch (Exception exception)
         {
@@ -126,7 +126,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
         }
         finally
         {
-            Socket = null;
+            FtpSocket = null;
             BaseStream = null;
         }
     }
@@ -139,7 +139,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
         NetworkStream?.Flush();
     }
 
-    public async Task<FtpResponse> GetResponseAsync(CancellationToken token = default)
+    public async Task<FtpResponse> GetFtpResponseAsync(CancellationToken token = default)
     {
         //Logger?.LogTrace("[CoreFtp] Getting Response");
 
@@ -178,7 +178,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
         }
     }
 
-    public async Task<TReturn> GetResponseAsync<TReturn>(Func<IAsyncEnumerable<string>, Task<TReturn>> parser, CancellationToken token = default)
+    public async Task<IAsyncEnumerable<string>> GetResponseReaderAsync(CancellationToken token = default)
     {
         if (Encoding == null)
             throw new ArgumentNullException(nameof(Encoding));
@@ -187,8 +187,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
 
         try
         {
-            token.ThrowIfCancellationRequested();
-            return await parser(ReadLineAsync_DEBUG2(Encoding, token));
+            return ReadLineAsync_DEBUG2(Encoding, token);
         }
         finally
         {
@@ -213,25 +212,22 @@ public sealed partial class FtpControlStream : System.IO.Stream
     public override long Seek(long offset, SeekOrigin origin)
         => NetworkStream.Seek(offset, origin);
 
-    public async Task<FtpResponse> SendCommandReadAsync(FtpCommand command, CancellationToken token = default)
-        => await SendCommandReadAsync(new FtpCommandEnvelope(command), token);
+    public Task<IAsyncEnumerable<string>> SendCommandReaderAsync(FtpCommand command, CancellationToken token = default)
+        => SendReadAsync(new FtpCommandEnvelope(command), token);
 
-    public async Task<TReturn> SendCommandReadAsync<TReturn>(FtpCommand command, Func<IAsyncEnumerable<string>, Task<TReturn>> parser, CancellationToken token = default)
-        => await SendCommandReadAsync(new FtpCommandEnvelope(command), parser, token);
-
-    public async Task<FtpResponse> SendCommandReadAsync(FtpCommandEnvelope envelope, CancellationToken token = default)
+    public Task<FtpResponse> SendCommandReadFtpResponseAsync(FtpCommandEnvelope envelope, CancellationToken token = default)
     {
         string commandString = envelope.GetCommandString();
-        return await SendReadAsync(commandString, token);
+        return SendRead2Async(commandString, token);
     }
 
-    public async Task<TReturn> SendCommandReadAsync<TReturn>(FtpCommandEnvelope envelope, Func<IAsyncEnumerable<string>, Task<TReturn>> parser, CancellationToken token = default)
+    public Task<IAsyncEnumerable<string>> SendReadAsync(FtpCommandEnvelope envelope, CancellationToken token = default)
     {
         string commandString = envelope.GetCommandString();
-        return await SendReadAsync(commandString, parser, token);
+        return SendCommandReaderAsync(commandString, token);
     }
 
-    public async Task<FtpResponse> SendReadAsync(string command, CancellationToken token = default)
+    public async Task<FtpResponse> SendRead2Async(string command, CancellationToken token = default)
     {
         await Semaphore.WaitAsync(token);
 
@@ -239,18 +235,18 @@ public sealed partial class FtpControlStream : System.IO.Stream
         {
             if (SocketDataAvailable() is int size && size > 0)
             {
-                var staleDataResult = await GetResponseAsync(token);
+                var staleDataResult = await GetFtpResponseAsync(token);
                 Logger?.LogWarning("[CoreFtp] Stale data on socket ({size}): {responseMessage}", size, staleDataResult.ResponseMessage);
             }
 
             string commandToPrint = command.StartsWith(FtpCommand.PASS.ToString())
-                ? "PASS *****"
+                ? "PASS ***"
                 : command;
 
             Logger?.LogDebug("[CoreFtp] Sending command: {commandToPrint}", commandToPrint);
             await WriteLineAsync(command, token);
 
-            return await GetResponseAsync(token);
+            return await GetFtpResponseAsync(token);
         }
         finally
         {
@@ -258,7 +254,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
         }
     }
 
-    public async Task<TReturn> SendReadAsync<TReturn>(string command, Func<IAsyncEnumerable<string>, Task<TReturn>> parser, CancellationToken token = default)
+    public async Task<IAsyncEnumerable<string>> SendCommandReaderAsync(string command, CancellationToken token = default)
     {
         await Semaphore.WaitAsync(token);
 
@@ -266,13 +262,13 @@ public sealed partial class FtpControlStream : System.IO.Stream
         {
             if (SocketDataAvailable() is int size && size > 0)
             {
-                var staleDataResult = await GetResponseAsync(token);
+                var staleDataResult = await GetFtpResponseAsync(token);
                 Logger?.LogWarning("[CoreFtp] Stale data on socket ({size}): {responseMessage}", size, staleDataResult.ResponseMessage);
             }
 
             // TODO log write
             await WriteLineAsync(command, token);
-            return await GetResponseAsync(parser, token);
+            return await GetResponseReaderAsync(token);
         }
         finally
         {
@@ -280,9 +276,11 @@ public sealed partial class FtpControlStream : System.IO.Stream
         }
     }
 
-    public override void SetLength(long value) => throw new InvalidOperationException();
+    public override void SetLength(long value)
+        => throw new InvalidOperationException();
 
-    public int? SocketDataAvailable() => Socket?.Available;
+    public int? SocketDataAvailable()
+        => FtpSocket?.Available;
 
     public override void Write(byte[] buffer, int offset, int count)
         => throw new Exception("use async");
@@ -341,9 +339,9 @@ public sealed partial class FtpControlStream : System.IO.Stream
         {
             await Semaphore.WaitAsync(token);
             Logger?.LogDebug("[CoreFtp] Connecting stream on {host}:{port}", host, port);
-            Socket = await ConnectSocketAsync(host, port, token);
-            if (Socket == null) return;
-            BaseStream = new NetworkStream(Socket);
+            FtpSocket = await ConnectSocketAsync(host, port, token);
+            if (FtpSocket == null) return;
+            BaseStream = new NetworkStream(FtpSocket);
             ResetTimeouts();
             LastActivity = DateTime.Now;
 
@@ -370,7 +368,8 @@ public sealed partial class FtpControlStream : System.IO.Stream
             {
                 if (SocketDataAvailable() is int size && size > 0)
                 {
-                    _ = await GetResponseAsync(FtpModelParser.ParseMotdAsync, token);
+                    var reader = await GetResponseReaderAsync(token);
+                    _ = await FtpModelParser.ParseMotdAsync(reader);
                     return;
                 }
                 await Task.Delay(10, token);
@@ -414,7 +413,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
     private async Task EncryptExplicitly(CancellationToken token)
     {
         Logger?.LogDebug("[CoreFtp] Encrypting explicitly");
-        var response = await SendReadAsync("AUTH TLS", token);
+        var response = await SendRead2Async("AUTH TLS", token);
 
         if (response.IsSuccess == false)
             throw new InvalidOperationException();
@@ -427,7 +426,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
         Logger?.LogDebug("[CoreFtp] Encrypting implicitly");
         await ActivateEncryptionAsync();
 
-        var response = await GetResponseAsync(token);
+        var response = await GetFtpResponseAsync(token);
         if (!response.IsSuccess)
         {
             throw new IOException($"Could not securely connect to host {Configuration.Host}:{Configuration.Port}");
@@ -473,7 +472,7 @@ public sealed partial class FtpControlStream : System.IO.Stream
 
     loop:
         {
-            await this.Socket.ReceiveAsync(single, SocketFlags.Peek, cancellationToken);
+            await this.FtpSocket.ReceiveAsync(single, SocketFlags.Peek, cancellationToken);
             count = await ReadAsync(single, cancellationToken);
             if (count == 0) yield break;
 
@@ -498,27 +497,26 @@ public sealed partial class FtpControlStream : System.IO.Stream
         const int MaxReadSize = 512;
         const byte Lf = (byte)'\n';
 
-        int count;
         var data = new List<byte>(10);
         byte[] peekBuf = new byte[MaxReadSize];
 
     loop:
         {
-            int peekCount = await this.Socket.ReceiveAsync(peekBuf, SocketFlags.Peek, cancellationToken);
+            int peekCount = await FtpSocket.ReceiveAsync(peekBuf, SocketFlags.Peek, cancellationToken);
             if (peekCount == 0) yield break;
 
             int pos = Array.IndexOf(peekBuf, Lf);
             if (pos < 0)
             {
                 byte[] accum = new byte[peekCount];
-                int accumCount = await this.Socket.ReceiveAsync(accum, cancellationToken);
+                int accumCount = await FtpSocket.ReceiveAsync(accum, cancellationToken);
                 if (accumCount != accum.Length) throw new Exception("wtf");
                 data.AddRange(peekBuf);
                 goto loop;
             }
 
             byte[] bufToLf = new byte[pos + 1];
-            int readCount = await this.Socket.ReceiveAsync(bufToLf, cancellationToken);
+            int readCount = await FtpSocket.ReceiveAsync(bufToLf, cancellationToken);
             if (readCount != bufToLf.Length) throw new Exception("wtf");
 
             data.AddRange(bufToLf);

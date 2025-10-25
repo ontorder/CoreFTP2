@@ -13,6 +13,7 @@ ftp.Logger = new DebugLogger();
 try
 {
     await ftp.LoginAsync(default);
+
     await foreach (var ftpFile in ftp.ListFilesAsyncEnum(DirSort.ModifiedTimestampReverse, default))
         Console.WriteLine($"{ftpFile.DateModified} - {ftpFile.Name}");
 }

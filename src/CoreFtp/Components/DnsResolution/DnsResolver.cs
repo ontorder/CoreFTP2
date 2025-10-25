@@ -30,7 +30,6 @@ public sealed class DnsResolver : IDnsResolver
             ? AddressFamily.InterNetwork
             : AddressFamily.InterNetworkV6;
 
-
         cancellation.ThrowIfCancellationRequested();
 
         IPEndPoint? ipEndpoint;

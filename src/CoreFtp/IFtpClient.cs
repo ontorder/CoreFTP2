@@ -19,7 +19,6 @@ public interface IFtpClient : IDisposable
     string WorkingDirectory { get; }
 
     Task ChangeWorkingDirectoryAsync(string directory, CancellationToken cancellationToken = default);
-    Task CloseFileDataStreamAsync(CancellationToken ctsToken = default);
     Task CreateDirectoryAsync(string directory, CancellationToken cancellationToken = default);
     Task DeleteDirectoryAsync(string directory, CancellationToken cancellationToken = default);
     Task DeleteFileAsync(string fileName, CancellationToken cancellationToken = default);

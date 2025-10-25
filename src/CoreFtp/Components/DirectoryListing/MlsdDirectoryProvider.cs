@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -16,94 +17,37 @@ namespace CoreFtp.Components.DirectoryListing;
 
 internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
 {
-    public MlsdDirectoryProvider(FtpClient ftpClient, ILogger logger, FtpClientConfiguration configuration)
+    public MlsdDirectoryProvider(Encoding encoding, ILogger? logger, System.IO.Stream stream)
+        : base(logger, encoding, stream)
     {
-        FtpClient = ftpClient;
-        Configuration = configuration;
-        Logger = logger;
     }
 
-    private void EnsureLoggedIn()
-    {
-        if (!FtpClient.IsConnected || !FtpClient.IsAuthenticated)
-            throw new FtpException("User must be logged in");
-    }
+    public override Task<ReadOnlyCollection<FtpNodeInformation>> ListAllAsync(CancellationToken cancellationToken = default)
+        => ListNodeTypeAsync(cancellationToken: cancellationToken);
 
-    public override async Task<ReadOnlyCollection<FtpNodeInformation>> ListAllAsync(CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            await FtpClient.DataSocketSemaphore.WaitAsync(cancellationToken);
-            return await ListNodeTypeAsync(cancellationToken: cancellationToken);
-        }
-        finally
-        {
-            FtpClient.DataSocketSemaphore.Release();
-        }
-    }
+    public override Task<ReadOnlyCollection<FtpNodeInformation>> ListDirectoriesAsync(CancellationToken cancellationToken = default)
+        => ListNodeTypeAsync(FtpNodeType.Directory, cancellationToken);
 
-    public override async Task<ReadOnlyCollection<FtpNodeInformation>> ListDirectoriesAsync(CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            await FtpClient.DataSocketSemaphore.WaitAsync(cancellationToken);
-            return await ListNodeTypeAsync(FtpNodeType.Directory, cancellationToken);
-        }
-        finally
-        {
-            FtpClient.DataSocketSemaphore.Release();
-        }
-    }
+    public override Task<ReadOnlyCollection<FtpNodeInformation>> ListFilesAsync(DirSort? sortBy = null, CancellationToken cancellationToken = default)
+        => ListNodeTypeAsync(FtpNodeType.File, cancellationToken);
 
-    public override async Task<ReadOnlyCollection<FtpNodeInformation>> ListFilesAsync(DirSort? sortBy = null, CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            await FtpClient.DataSocketSemaphore.WaitAsync(cancellationToken);
-            return await ListNodeTypeAsync(FtpNodeType.File, cancellationToken);
-        }
-        finally
-        {
-            FtpClient.DataSocketSemaphore.Release();
-        }
-    }
-
-    public override async IAsyncEnumerable<FtpNodeInformation> ListFilesAsyncEnum(DirSort? sortBy = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            await FtpClient.DataSocketSemaphore.WaitAsync(cancellationToken);
-            await foreach (var node in ListNodesAsyncEnum(FtpNodeType.File, sortBy, cancellationToken))
-                yield return node;
-        }
-        finally
-        {
-            FtpClient.DataSocketSemaphore.Release();
-        }
-    }
+    public override IAsyncEnumerable<FtpNodeInformation> ListFilesAsyncEnum(DirSort? sortBy = null, CancellationToken cancellationToken = default)
+        => ListNodesAsyncEnum(FtpNodeType.File, sortBy, cancellationToken);
 
     private async Task<ReadOnlyCollection<FtpNodeInformation>> ListNodeTypeAsync(FtpNodeType? ftpNodeType = null, CancellationToken cancellationToken = default)
     {
-        string nodeTypeString = !ftpNodeType.HasValue
-            ? "all"
-            : ftpNodeType.Value == FtpNodeType.File
-                ? "file"
-                : "dir";
+        var nodeTypeString = ftpNodeType switch
+        {
+            null => "all",
+            FtpNodeType.File => "file",
+            FtpNodeType.Directory => "dir",
+            _ => throw new ArgumentOutOfRangeException(nameof(ftpNodeType)),
+        };
 
         Logger?.LogDebug("[CoreFtp] MlsdDirectoryProvider: Listing {ftpNodeType}", ftpNodeType);
 
-        EnsureLoggedIn();
-
         try
         {
-            Stream = await FtpClient.ConnectDataStreamAsync(cancellationToken);
-            if (Stream == null)
-                throw new FtpException("Could not establish a data connection");
-
-            var result = await FtpClient.ControlStream.SendCommandReadAsync(FtpCommand.MLSD, cancellationToken);
-            if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData) && (result.FtpStatusCode != FtpStatusCode.ClosingData))
-                throw new FtpException("Could not retrieve directory listing " + result.ResponseMessage);
-
             var nodes = new List<FtpNodeInformation>();
             await foreach (var node in RetrieveDirectoryListingAsyncEnum(cancellationToken))
             {
@@ -116,20 +60,22 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
         }
         finally
         {
-            Stream?.Dispose();
-            Stream = null;
+            Stream.Dispose();
         }
     }
 
-    private async IAsyncEnumerable<FtpNodeInformation> ListNodesAsyncEnum(FtpNodeType? ftpNodeType = null, DirSort? sortBy = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    private async IAsyncEnumerable<FtpNodeInformation> ListNodesAsyncEnum(
+        FtpNodeType? ftpNodeType = null,
+        DirSort? sortBy = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        string nodeTypeString = !ftpNodeType.HasValue
-            ? "all"
-            : ftpNodeType.Value == FtpNodeType.File
-                ? "file"
-                : "dir";
-
-        EnsureLoggedIn();
+        string nodeTypeString = ftpNodeType switch
+        {
+            null => "all",
+            FtpNodeType.File => "file",
+            FtpNodeType.Directory => "dir",
+            _ => throw new ArgumentOutOfRangeException(nameof(ftpNodeType)),
+        };
 
         try
         {
@@ -138,12 +84,6 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
             try
             {
                 Logger?.LogDebug("[CoreFtp] MlsdDirectoryProvider: Listing {ftpNodeType}", ftpNodeType);
-                Stream = await FtpClient.ConnectDataStreamAsync(cancellationToken);
-                var result = await FtpClient.ControlStream.SendCommandReadAsync(new FtpCommandEnvelope(FtpCommand.MLSD), FtpModelParser.ParseMlsdAsync, cancellationToken);
-
-                //if ((result.FtpStatusCode != FtpStatusCode.DataAlreadyOpen) && (result.FtpStatusCode != FtpStatusCode.OpeningData))
-                //    throw new FtpException("Could not retrieve directory listing: " + result.ResponseMessage);
-                if (result == false) throw new FtpException("mlds");
 
                 var nodes = new List<FtpNodeInformation>();
                 await foreach (var line in RetrieveDirectoryListingAsyncEnum(cancellationToken))
@@ -164,7 +104,7 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
             }
             catch (Exception initErr)
             {
-                Logger?.LogError(initErr, "[CoreFtp] list nodes async enum exception");
+                Logger?.LogError(initErr, "[CoreFtp] list nodes async enum EXCEPTION");
                 yield break;
             }
 

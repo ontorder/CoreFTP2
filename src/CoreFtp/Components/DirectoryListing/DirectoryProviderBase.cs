@@ -17,29 +17,39 @@ namespace CoreFtp.Components.DirectoryListing;
 
 public abstract class DirectoryProviderBase : IDirectoryProvider
 {
-    protected FtpClientConfiguration? Configuration;
-    protected FtpClient? FtpClient;
     protected ILogger? Logger;
-    protected Stream? Stream;
+    protected Encoding MyEncoding;
+    protected Stream Stream;
 
-    public virtual Task<ReadOnlyCollection<FtpNodeInformation>> ListAllAsync(CancellationToken cancellationToken) => throw new NotImplementedException();
+    protected DirectoryProviderBase(ILogger? logger, Encoding myEncoding, Stream stream)
+    {
+        Logger = logger;
+        MyEncoding = myEncoding;
+        Stream = stream;
+    }
 
-    public virtual Task<ReadOnlyCollection<FtpNodeInformation>> ListDirectoriesAsync(CancellationToken cancellationToken) => throw new NotImplementedException();
+    public virtual Task<ReadOnlyCollection<FtpNodeInformation>> ListAllAsync(CancellationToken cancellationToken)
+        => throw new NotImplementedException();
 
-    public virtual IAsyncEnumerable<FtpNodeInformation> ListFilesAsyncEnum(DirSort? sortBy = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    public virtual Task<ReadOnlyCollection<FtpNodeInformation>> ListDirectoriesAsync(CancellationToken cancellationToken)
+        => throw new NotImplementedException();
 
-    public virtual Task<ReadOnlyCollection<FtpNodeInformation>> ListFilesAsync(DirSort? sortBy = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    public virtual IAsyncEnumerable<FtpNodeInformation> ListFilesAsyncEnum(DirSort? sortBy = null, CancellationToken cancellationToken = default)
+        => throw new NotImplementedException();
+
+    public virtual Task<ReadOnlyCollection<FtpNodeInformation>> ListFilesAsync(DirSort? sortBy = null, CancellationToken cancellationToken = default)
+        => throw new NotImplementedException();
 
     protected async Task<IEnumerable<string>> RetrieveDirectoryListingAsync(CancellationToken cancellationToken)
     {
-        var lines = await ReadLinesAsync(FtpClient.ControlStream.Encoding, cancellationToken);
+        var lines = await ReadLinesAsync(MyEncoding, cancellationToken);
         Logger?.LogDebug("[CoreFtp] {lines}", lines);
         return lines;
     }
 
     protected async IAsyncEnumerable<string> RetrieveDirectoryListingAsyncEnum([EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        await foreach (string line in ReadLineAsyncEnum(FtpClient.ControlStream.Encoding, cancellationToken))
+        await foreach (string line in ReadLineAsyncEnum(MyEncoding, cancellationToken))
         {
             Logger?.LogDebug("[CoreFtp] {line}", line);
             yield return line;

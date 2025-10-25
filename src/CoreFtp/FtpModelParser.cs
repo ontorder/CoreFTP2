@@ -11,8 +11,8 @@ namespace CoreFtp;
 
 public partial class FtpModelParser
 {
-    private static Regex _pwdParser = CreatePwdRegex();
-    private static Regex _stdParser = CreateStdStatusRegex();
+    private static readonly Regex _pwdParser = CreatePwdRegex();
+    private static readonly Regex _stdParser = CreateStdStatusRegex();
 
     private enum FeatsParseStates
     {
@@ -94,7 +94,7 @@ public partial class FtpModelParser
     public static async Task<bool> ParseMlsdAsync(IAsyncEnumerable<string> reader)
     {
         await using var e = reader.GetAsyncEnumerator();
-        await e.MoveNextAsync();
+        _ = await e.MoveNextAsync();
         var status = ParseStatus(e.Current);
         if (status == null) return false;
         return status.Value.Code == (int)FtpStatusCode.DataAlreadyOpen || status.Value.Code == (int)FtpStatusCode.OpeningData;
@@ -158,6 +158,18 @@ public partial class FtpModelParser
         return (true, ftpPath);
     }
 
+    private static (int Code, string Msg)? ParseStatus(string statusString)
+    {
+        var match = _stdParser.Match(statusString);
+        if (false == match.Success)
+            return null;
+
+        string ftpStatusCode = match.Groups["statusCode"].Value;
+        string responseMessage = match.Groups["message"].Value;
+
+        return (int.Parse(ftpStatusCode), responseMessage);
+    }
+
     public static async Task<bool> ParseTypeAsync(IAsyncEnumerable<string> reader)
     {
         await using var e = reader.GetAsyncEnumerator();
@@ -182,18 +194,6 @@ public partial class FtpModelParser
 
     [GeneratedRegex("^(?<statusCode>[0-9]{3}) \"(?<path>.*)\".*$", RegexOptions.Compiled)]
     private static partial Regex CreatePwdRegex();
-
-    private static (int Code, string Msg)? ParseStatus(string statusString)
-    {
-        var match = _stdParser.Match(statusString);
-        if (false == match.Success)
-            return null;
-
-        string ftpStatusCode = match.Groups["statusCode"].Value;
-        string responseMessage = match.Groups["message"].Value;
-
-        return (int.Parse(ftpStatusCode), responseMessage);
-    }
 
     [GeneratedRegex("(?:[\\|,])(?<PortNumber>\\d+)(?:[\\|,])")]
     private static partial Regex RegexParseEpsvPort();
