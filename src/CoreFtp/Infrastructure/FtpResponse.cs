@@ -9,10 +9,10 @@ public sealed class FtpResponse
     public static FtpResponse EmptyResponse = new()
     {
         ResponseMessage = "No response was received",
-        FtpStatusCode = FtpStatusCode.Undefined
+        FtpStatusCode = CFtpStatusCode.Code0Undefined
     };
 
-    public FtpStatusCode FtpStatusCode { get; set; }
+    public CFtpStatusCode FtpStatusCode { get; set; }
 
     public bool IsSuccess
     {

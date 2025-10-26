@@ -4,9 +4,9 @@ using Enum;
 
 public static class FtpStringExtensions
 {
-    public static FtpStatusCode ToStatusCode(this string operand)
+    public static CFtpStatusCode ToStatusCode(this string operand)
     {
         _ = int.TryParse(operand[..3], out int statusCodeValue);
-        return statusCodeValue.ToNullableEnum<FtpStatusCode>() ?? FtpStatusCode.Undefined;
+        return statusCodeValue.ToNullableEnum<CFtpStatusCode>() ?? CFtpStatusCode.Code0Undefined;
     }
 }

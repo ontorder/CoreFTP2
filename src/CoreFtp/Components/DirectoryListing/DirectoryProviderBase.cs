@@ -9,15 +9,15 @@ namespace CoreFtp.Components.DirectoryListing;
 
 public abstract class DirectoryProviderBase : IDirectoryProvider
 {
-    protected Infrastructure.Stream.FtpControlStream FtpStream;
+    protected Infrastructure.Stream.FtpTextDataStream DataStream;
     protected ILogger? Logger;
     protected Encoding MyEncoding;
 
-    protected DirectoryProviderBase(ILogger? logger, Encoding myEncoding, Infrastructure.Stream.FtpControlStream stream)
+    protected DirectoryProviderBase(ILogger? logger, Encoding myEncoding, Infrastructure.Stream.FtpTextDataStream stream)
     {
         Logger = logger;
         MyEncoding = myEncoding;
-        FtpStream = stream;
+        DataStream = stream;
     }
 
     public virtual Task<ReadOnlyCollection<FtpNodeInformation>> ListAllAsync(CancellationToken cancellationToken)
@@ -31,20 +31,4 @@ public abstract class DirectoryProviderBase : IDirectoryProvider
 
     public virtual Task<ReadOnlyCollection<FtpNodeInformation>> ListFilesAsync(DirSort? sortBy = null, CancellationToken cancellationToken = default)
         => throw new NotImplementedException();
-
-    protected async Task<IEnumerable<string>> RetrieveDirectoryListingAsync(CancellationToken cancellationToken)
-    {
-        var lines = await FtpStream.ReadLinesAsync(MyEncoding, cancellationToken);
-        Logger?.LogDebug("[CoreFtp] {lines}", lines);
-        return lines;
-    }
-
-    protected async IAsyncEnumerable<string> RetrieveDirectoryListingAsyncEnum([EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        await foreach (string line in FtpStream.ReadLineAsyncEnum(MyEncoding, cancellationToken))
-        {
-            Logger?.LogDebug("[CoreFtp] {line}", line);
-            yield return line;
-        }
-    }
 }

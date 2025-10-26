@@ -7,75 +7,83 @@ namespace CoreFtp;
 
 public partial class FtpModelParser
 {
-    private static readonly Regex _pwdParser = CreatePwdRegex();
+    private CFtpStatusCode? _messageParsingState = null;
     private static readonly Regex _stdParser = CreateStdStatusRegex();
+    private readonly List<string> _tempAdditionalData = new();
+    private TaskCompletionSource<(CFtpStatusCode Code, string Message, string[]? AdditionalData)> _waitResponse = new();
 
-    private enum FeatsParseStates
+    public void Parse(string ftpLine)
     {
-        Header,
-        Body
-    }
+        var parsed = ParseFtpLine(ftpLine);
 
-    public static async Task<bool> ParseCwdAsync(IAsyncEnumerable<string> reader)
-    {
-        await using var e = reader.GetAsyncEnumerator();
-        await e.MoveNextAsync();
-        var status = ParseStatus(e.Current);
-        return status?.Code == (int)FtpStatusCode.FileActionOK;
-    }
-
-    public static async Task<(bool Ok, int? Port)> ParseEpsvAsync(IAsyncEnumerable<string> reader)
-    {
-        await using var e = reader.GetAsyncEnumerator();
-        await e.MoveNextAsync();
-        var status = ParseStatus(e.Current);
-        if (status == null) return (false, null);
-        if (status.Value.Code != (int)FtpStatusCode.EnteringExtendedPassive) return (false, null);
-
-        var regex = RegexParseEpsvPort();
-        var match = regex.Match(status.Value.Msg);
-        if (match.Success == false) return (false, null);
-
-        int port = int.Parse(match.Groups["PortNumber"].Value);
-        return (true, port);
-    }
-
-    public static async Task<(bool Ok, ICollection<string>? Feats)> ParseFeatsAsync(IAsyncEnumerable<string> reader)
-    {
-        var parserState = FeatsParseStates.Header;
-        List<string> feats = new(9);
-
-        await foreach (string line in reader)
+        switch (_messageParsingState)
         {
-            if (parserState == FeatsParseStates.Header)
-            {
-                if (line != "211-Features:") throw new InvalidOperationException();
-
-                var checkStatus = ParseStatus(line);
-                switch (checkStatus?.Code)
+            case null:
+                switch (ftpLine)
                 {
-                    case null: break;
-                    case (int)FtpStatusCode.CommandNotImplemented: return (true, Array.Empty<string>());
-                    case (int)FtpStatusCode.CommandSyntaxError: return (true, Array.Empty<string>());
+                    case ['2', '1', '1', '-', ..]:
+                        _messageParsingState = CFtpStatusCode.Code211Feats;
+                        return;
+
+                    case ['2', '2', '0', '-', ..]:
+                        _messageParsingState = CFtpStatusCode.Code220Motd;
+                        _tempAdditionalData.Add(ftpLine);
+                        return;
+
+                    case ['4', _, _, ' ', ..]:
+                    case ['5', _, _, ' ', ..]:
+                        var tempResponse2 = _waitResponse;
+                        _waitResponse = new();
+                        tempResponse2.TrySetResult((parsed.FtpStatusCode, parsed.ResponseMessage, null));
+                        return;
                 }
 
-                parserState = FeatsParseStates.Body;
-                continue;
-            }
+                Signal(parsed.FtpStatusCode, parsed.ResponseMessage, Array.Empty<string>());
+                break;
 
-            if (parserState == FeatsParseStates.Body)
-            {
-                var checkStatus = ParseStatus(line);
-                if (checkStatus.HasValue)
+            case CFtpStatusCode.Code220Motd:
+                _tempAdditionalData.Add(ftpLine);
+                if (parsed.IsMultiline == false)
                 {
-                    if (checkStatus.Value.Code != (int)FtpStatusCode.EndFeats) throw new InvalidOperationException();
-                    return (true, feats);
+                    _messageParsingState = null;
+                    Signal(CFtpStatusCode.Code220Motd, string.Empty, _tempAdditionalData.ToArray());
                 }
-                feats.Add(line);
-                continue;
-            }
+                break;
+
+            case CFtpStatusCode.Code211Feats:
+                _tempAdditionalData.Add(ftpLine);
+                if (parsed.IsMultiline == false)
+                {
+                    _messageParsingState = null;
+                    Signal(CFtpStatusCode.Code211Feats, string.Empty, _tempAdditionalData.ToArray());
+                }
+                break;
+
+            default:
+                // TODO invalid operation
+                _messageParsingState = null;
+                break;
         }
-        return (false, null);
+
+        void Signal(CFtpStatusCode ftpStatusCode, string responseMessage, string[] additionalData)
+        {
+            var tempResponse = _waitResponse;
+            _waitResponse = new();
+            tempResponse.TrySetResult((ftpStatusCode, responseMessage, additionalData));
+        }
+    }
+
+    public Task<(CFtpStatusCode Code, string Message, string[]? AdditionalData)> WaitResponseAsync()
+        => _waitResponse.Task;
+
+    private (CFtpStatusCode FtpStatusCode, bool IsMultiline, string ResponseMessage) ParseFtpLine(string ftpLine)
+    {
+        var match = _stdParser.Match(ftpLine);
+        if (false == match.Success) return (CFtpStatusCode.Code0Undefined, false, string.Empty);
+        var ftpStatusCode = match.Groups["statusCode"].Value.ToStatusCode();
+        var responseMessage = match.Groups["message"].Value;
+        var isMultiline = match.Groups["isMultiline"].Value == "-";
+        return (ftpStatusCode, isMultiline, responseMessage);
     }
 
     public static async Task<bool> ParseListAsync(IAsyncEnumerable<string> reader)
@@ -84,16 +92,7 @@ public partial class FtpModelParser
         await e.MoveNextAsync();
         var status = ParseStatus(e.Current);
         if (status == null) return false;
-        return status.Value.Code == (int)FtpStatusCode.DataAlreadyOpen || status.Value.Code == (int)FtpStatusCode.OpeningData;
-    }
-
-    public static async Task<bool> ParseMlsdAsync(IAsyncEnumerable<string> reader)
-    {
-        await using var e = reader.GetAsyncEnumerator();
-        _ = await e.MoveNextAsync();
-        var status = ParseStatus(e.Current);
-        if (status == null) return false;
-        return status.Value.Code == (int)FtpStatusCode.DataAlreadyOpen || status.Value.Code == (int)FtpStatusCode.OpeningData;
+        return status.Value.Code == (int)CFtpStatusCode.Code125DataAlreadyOpen || status.Value.Code == (int)CFtpStatusCode.Code150OpeningData;
     }
 
     public static async Task<(bool Ok, ICollection<string>? Motd)> ParseMotdAsync(IAsyncEnumerable<string> reader)
@@ -108,50 +107,10 @@ public partial class FtpModelParser
             if (line.StartsWith("220-")) continue;
             var status = ParseStatus(line);
             if (status == null) return (false, lines);
-            if (status.Value.Code != (int)FtpStatusCode.SendUserCommand) return (false, lines);
+            if (status.Value.Code != (int)CFtpStatusCode.Code220Motd) return (false, lines);
             break;
         }
         return (true, lines);
-    }
-
-    public static async Task<bool> ParseOptsAsync(IAsyncEnumerable<string> reader)
-    {
-        await using var e = reader.GetAsyncEnumerator();
-        await e.MoveNextAsync();
-        var status = ParseStatus(e.Current);
-        // 200 Always in UTF8 mode.
-        return status?.Code == (int)FtpStatusCode.CommandOK;
-    }
-
-    public static async Task<bool> ParsePassAsync(IAsyncEnumerable<string> reader)
-    {
-        await using var e = reader.GetAsyncEnumerator();
-        await e.MoveNextAsync();
-        var status = ParseStatus(e.Current);
-        return status?.Code == (int)FtpStatusCode.LoggedInProceed;
-    }
-
-    public static async Task<(bool Ok, int? Port)> ParsePasvAsync(IAsyncEnumerable<string> reader)
-    {
-        await using var e = reader.GetAsyncEnumerator();
-        await e.MoveNextAsync();
-        var status = ParseStatus(e.Current);
-        if (status == null) return (false, null);
-        if (status.Value.Code == (int)FtpStatusCode.EnteringPassive) return (false, null);
-        return (true, status.Value.Msg.ExtractPasvPortNumber());
-    }
-
-    public static async Task<(bool Ok, string? Path)> ParsePwdAsync(IAsyncEnumerable<string> reader)
-    {
-        await using var e = reader.GetAsyncEnumerator();
-        await e.MoveNextAsync();
-        var parsed = _pwdParser.Match(e.Current);
-        if (parsed.Success == false) return (false, null);
-        string ftpStatusCodeString = parsed.Groups["statusCode"].Value;
-        int ftpStatusCode = int.Parse(ftpStatusCodeString);
-        if (ftpStatusCode != (int)FtpStatusCode.PathnameCreated) return (false, null);
-        string ftpPath = parsed.Groups["path"].Value;
-        return (true, ftpPath);
     }
 
     private static (int Code, string Msg)? ParseStatus(string statusString)
@@ -166,31 +125,18 @@ public partial class FtpModelParser
         return (int.Parse(ftpStatusCode), responseMessage);
     }
 
-    public static async Task<bool> ParseTypeAsync(IAsyncEnumerable<string> reader)
-    {
-        await using var e = reader.GetAsyncEnumerator();
-        await e.MoveNextAsync();
-        var status = ParseStatus(e.Current);
-        return status?.Code == (int)FtpStatusCode.CommandOK;
-    }
+    [GeneratedRegex("^(?<statusCode>[0-9]{3}) \"(?<path>.*)\".*$", RegexOptions.Compiled)]
+    public static partial Regex CreatePwdRegex();
 
-    public static async Task<bool> ParseUserAsync(IAsyncEnumerable<string> reader)
-    {
-        await using var e = reader.GetAsyncEnumerator();
-        await e.MoveNextAsync();
-        var status = ParseStatus(e.Current);
-        if (status == null) return false;
-        return status.Value.Code == (int)FtpStatusCode.SendPasswordCommand
-            || status.Value.Code == (int)FtpStatusCode.SendUserCommand
-            || status.Value.Code == (int)FtpStatusCode.LoggedInProceed;
-    }
-
-    [GeneratedRegex("^(?<statusCode>[0-9]{3}) (?<message>.*)$", RegexOptions.Compiled)]
+    [GeneratedRegex("^(?<statusCode>[0-9]{3})(?<isMultiline>.)(?<message>.*)$", RegexOptions.Compiled)]
     private static partial Regex CreateStdStatusRegex();
 
-    [GeneratedRegex("^(?<statusCode>[0-9]{3}) \"(?<path>.*)\".*$", RegexOptions.Compiled)]
-    private static partial Regex CreatePwdRegex();
-
     [GeneratedRegex("(?:[\\|,])(?<PortNumber>\\d+)(?:[\\|,])")]
-    private static partial Regex RegexParseEpsvPort();
+    public static partial Regex CreateEpsvPortRegex();
+
+    private enum FeatsParseStates
+    {
+        Header,
+        Body
+    }
 }

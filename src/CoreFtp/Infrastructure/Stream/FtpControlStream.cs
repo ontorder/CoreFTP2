@@ -17,18 +17,17 @@ namespace CoreFtp.Infrastructure.Stream;
 public sealed partial class FtpControlStream
 {
     public Encoding Encoding { get; set; } = Encoding.ASCII;
-    public bool IsEncrypted => SslStream != null && SslStream.IsEncrypted;
-    public ILogger? Logger;
+    public bool IsEncrypted => _sslStream != null && _sslStream.IsEncrypted;
 
-    private readonly FtpClientConfiguration Configuration;
-    private readonly IDnsResolver DnsResolver;
-    private static readonly Regex FtpRegex = CreateFtpRegex();
-    private Socket? FtpSocket;
+    private readonly FtpClientConfiguration _configuration;
+    private readonly IDnsResolver _dnsResolver;
+    private Socket? _ftpSocket;
     private NetworkStream? _ftpStream;
-    private DateTime LastActivity = DateTime.Now;
-    private readonly SemaphoreSlim ReceiveSemaphore = new(1, 1);
-    private readonly SemaphoreSlim Semaphore = new(1, 1);
-    private SslStream? SslStream { get; set; }
+    private DateTime _lastActivity = DateTime.Now;
+    private readonly ILogger? _logger;
+    private readonly FtpModelParser _parser = new();
+    private readonly SemaphoreSlim _sendSemaphore = new(1, 1);
+    private SslStream? _sslStream;
 
     private const int SocketPollInterval = 15000;
     private const int SecondsToMilli = 1000;
@@ -39,16 +38,16 @@ public sealed partial class FtpControlStream
         {
             try
             {
-                if (FtpSocket?.Connected != true || _ftpStream?.CanRead != true || _ftpStream?.CanWrite != true)
+                if (_ftpSocket?.Connected != true || _ftpStream?.CanRead != true || _ftpStream?.CanWrite != true)
                 {
                     Disconnect();
                     return false;
                 }
 
-                if (LastActivity.HasIntervalExpired(DateTime.Now, SocketPollInterval))
+                if (_lastActivity.HasIntervalExpired(DateTime.Now, SocketPollInterval))
                 {
-                    Logger?.LogDebug("[CoreFtp] Polling connection");
-                    if (FtpSocket?.Poll(500000, SelectMode.SelectRead) == true && FtpSocket.Available == 0)
+                    _logger?.LogDebug("[CoreFtp] Polling connection");
+                    if (_ftpSocket?.Poll(500000, SelectMode.SelectRead) == true && _ftpSocket.Available == 0)
                     {
                         Disconnect();
                         return false;
@@ -58,13 +57,13 @@ public sealed partial class FtpControlStream
             catch (SocketException socketException)
             {
                 Disconnect();
-                Logger?.LogError(socketException, "[CoreFtp] FtpSocketStream.IsConnected: Caught and discarded SocketException while testing for connectivity");
+                _logger?.LogError(socketException, "[CoreFtp] FtpSocketStream.IsConnected: Caught and discarded SocketException while testing for connectivity");
                 return false;
             }
             catch (IOException ioException)
             {
                 Disconnect();
-                Logger?.LogError(ioException, "[CoreFtp] FtpSocketStream.IsConnected: Caught and discarded IOException while testing for connectivity");
+                _logger?.LogError(ioException, "[CoreFtp] FtpSocketStream.IsConnected: Caught and discarded IOException while testing for connectivity");
                 return false;
             }
 
@@ -72,208 +71,394 @@ public sealed partial class FtpControlStream
         }
     }
 
-    internal bool IsDataConnection { get; set; }
-
     public FtpControlStream(FtpClientConfiguration configuration, IDnsResolver dnsResolver)
     {
-        Logger?.LogDebug("[CoreFtp] Constructing new FtpSocketStream");
-        Configuration = configuration;
-        DnsResolver = dnsResolver;
+        _logger?.LogDebug("[CoreFtp] Constructing new FtpSocketStream");
+        _configuration = configuration;
+        _dnsResolver = dnsResolver;
+    }
+
+    public async Task ClntAsync(string clientName, CancellationToken cancellationToken)
+    {
+        var clntCmd = new FtpCommandEnvelope(FtpCommand.CLNT, clientName);
+        var resp = await SendAsync(clntCmd, cancellationToken);
+        if (resp.Code.IsError()) throw new FtpException(resp.Message);
     }
 
     public async Task ConnectAsync(CancellationToken token = default)
     {
-        await ConnectStreamAsync(Configuration.Host, Configuration.Port, token);
+        if (false == await ConnectStreamAsync(_configuration.Host, _configuration.Port, token))
+            return;
 
-        if (Configuration.ShouldEncrypt == false)
+        if (_configuration.ShouldEncrypt == false)
             return;
 
         if (false == IsConnected || IsEncrypted)
             return;
 
-        if (Configuration.EncryptionType == FtpEncryption.Implicit)
+        if (_configuration.EncryptionType == FtpEncryption.Implicit)
             await EncryptImplicitly(token);
 
-        if (Configuration.EncryptionType == FtpEncryption.Explicit)
+        if (_configuration.EncryptionType == FtpEncryption.Explicit)
             await EncryptExplicitly(token);
+
+        _ = ReadLoopAsync();
+
+        var temp = await _parser.WaitResponseAsync(); // TODO timeout
+        if (temp.Code.IsError())
+            throw new IOException("Could not connect to the FTP server.");
+        if (temp.Code != CFtpStatusCode.Code220Motd)
+            throw new InvalidOperationException("motd failed");
+
+        _logger?.LogDebug("[CoreFTP] motd received");
+    }
+
+    public async Task<bool> CwdAsync(string directory, CancellationToken cancellationToken)
+    {
+        var resp = await SendAsync(new FtpCommandEnvelope(FtpCommand.CWD, directory), cancellationToken);
+        if (resp.Code.IsError()) return false;
+        return resp.Code == CFtpStatusCode.Code250FileActionOK;
+    }
+
+    public async Task<bool> DeleteAsync(string fileName, CancellationToken cancellationToken)
+    {
+        var cmd = new FtpCommandEnvelope(FtpCommand.DELE, fileName);
+        var resp = await SendAsync(cmd, cancellationToken);
+        if (resp.Code.IsError()) return false;
+        return true;
     }
 
     public void Disconnect()
     {
-        Logger?.LogTrace("[CoreFtp] Disconnecting");
+        _logger?.LogTrace("[CoreFtp] Disconnecting");
         try
         {
             _ftpStream?.Dispose();
-            SslStream?.Dispose();
-            FtpSocket?.Shutdown(SocketShutdown.Both);
+            _sslStream?.Dispose();
+            _ftpSocket?.Shutdown(SocketShutdown.Both);
         }
         catch (Exception exception)
         {
-            Logger?.LogError(exception, "[CoreFtp] Exception caught");
+            _logger?.LogError(exception, "[CoreFtp] Exception caught");
         }
         finally
         {
-            FtpSocket = null;
+            _ftpSocket = null;
             _ftpStream = null;
         }
     }
 
     public void Dispose(bool disposing)
     {
-        Logger?.LogTrace("[CoreFtp] {msg}", IsDataConnection ? "Disposing of data connection" : "Disposing of control connection");
+        _logger?.LogTrace("[CoreFtp] Disposing of control connection");
         if (disposing) Disconnect();
     }
 
-    public void Flush()
+    public async Task<int?> EpsvAsync(CancellationToken cancellationToken)
     {
-        if (false == IsConnected)
-            throw new InvalidOperationException("The FtpSocketStream object is not connected.");
+        var resp = await SendAsync(FtpCommand.EPSV, cancellationToken);
+        if (resp.Code != CFtpStatusCode.COde229EnteringExtendedPassive) return null;
 
-        _ftpStream?.Flush();
-    }
+        var regex = FtpModelParser.CreateEpsvPortRegex();
+        var match = regex.Match(resp.Message);
+        if (match.Success == false) return null;
 
-    public async Task<FtpResponse> GetFtpResponseAsync(CancellationToken token = default)
-    {
-        //Logger?.LogTrace("[CoreFtp] Getting Response");
-
-        if (Encoding == null)
-            throw new ArgumentNullException(nameof(Encoding));
-
-        await ReceiveSemaphore.WaitAsync(token);
-
-        try
-        {
-            token.ThrowIfCancellationRequested();
-
-            var response = new FtpResponse();
-            var data = new List<string>();
-
-            foreach (string line in await ReadLinesAsync(Encoding, token))
-            {
-                token.ThrowIfCancellationRequested();
-                Logger?.LogDebug("[CoreFtp] {line}", line);
-                data.Add(line);
-
-                Match match = FtpRegex.Match(line);
-                if (false == match.Success)
-                    continue;
-                //Logger?.LogTrace("[CoreFtp] Finished receiving message");
-                response.FtpStatusCode = match.Groups["statusCode"].Value.ToStatusCode();
-                response.ResponseMessage = match.Groups["message"].Value;
-                break;
-            }
-            response.Data = data.ToArray();
-            return response;
-        }
-        finally
-        {
-            ReceiveSemaphore.Release();
-        }
-    }
-
-    public async Task<IAsyncEnumerable<string>> GetResponseReaderAsync(CancellationToken token = default)
-    {
-        if (Encoding == null)
-            throw new ArgumentNullException(nameof(Encoding));
-
-        await ReceiveSemaphore.WaitAsync(token);
-
-        try
-        {
-            return ReadLineAsyncEnum(Encoding, token);
-        }
-        finally
-        {
-            ReceiveSemaphore.Release();
-        }
+        return int.Parse(match.Groups["PortNumber"].Value);
     }
 
     public System.IO.Stream GetStream()
-        => SslStream ?? (System.IO.Stream)_ftpStream;
+        => _sslStream ?? (System.IO.Stream?)_ftpStream ?? throw new InvalidOperationException();
 
-    public async Task<FtpControlStream> OpenDataStreamAsync(string host, int port, CancellationToken token)
+    public async Task<string[]> GetFeatsAsync(CancellationToken cancellationToken)
     {
-        Logger?.LogDebug("[CoreFtp] FtpSocketStream: Opening datastream");
-        var socketStream = new FtpControlStream(Configuration, DnsResolver) { Logger = Logger, IsDataConnection = true };
-        await socketStream.ConnectStreamAsync(host, port, token);
+        await SendAsync(FtpCommand.FEAT, cancellationToken);
+        var resp = await _parser.WaitResponseAsync();
+        if (resp.Code.IsError())
+        {
+            _logger?.LogError("[CoreFtp] FEAT command unsuccessful");
+            throw new Exception();
+        }
+        var features = resp.AdditionalData!.Select(x => x.Trim());
+        return features.ToArray();
+    }
+
+    public async Task<bool> MlsdAsync(CancellationToken cancellation)
+    {
+        var resp = await SendAsync(new FtpCommandEnvelope(FtpCommand.MLSD), cancellation);
+        if (resp.Code.IsError()) return false;
+        return resp.Code is CFtpStatusCode.Code125DataAlreadyOpen or CFtpStatusCode.Code150OpeningData;
+    }
+
+    public async Task<bool> ListAsync(DirSort? sortBy, CancellationToken cancellation)
+    {
+        string arguments = sortBy switch
+        {
+            DirSort.Alphabetical => "-1",
+            DirSort.AlphabeticalReverse => "-r",
+            DirSort.ModifiedTimestampReverse => "-t",
+            _ => String.Empty,
+        };
+        var listCmd = new FtpCommandEnvelope(FtpCommand.LIST, arguments);
+        var resp = await SendAsync(listCmd, cancellation);
+        if (resp.Code.IsError()) return false;
+        return true; // ma non devo fare 125/150?
+    }
+
+    public async Task MkdAsync(string directory, CancellationToken cancellationToken)
+    {
+        var mkdCmd = new FtpCommandEnvelope(FtpCommand.MKD, directory);
+        var resp = await SendAsync(mkdCmd, cancellationToken);
+        if (resp.Code.IsError()) throw new FtpException();
+    }
+
+    public async Task<int?> PasvAsync(CancellationToken cancellationToken)
+    {
+        var resp = await SendAsync(FtpCommand.PASV, cancellationToken);
+        if (resp.Code != CFtpStatusCode.Code227EnteringPassive) return null;
+        return resp.Message.ExtractPasvPortNumber();
+    }
+
+    public async Task PbszAsync(CancellationToken cancellationToken)
+    {
+        var pbszCmd = new FtpCommandEnvelope(FtpCommand.PBSZ, "0");
+        _ = await SendAsync(pbszCmd, cancellationToken);
+    }
+
+    public async Task ProtAsync(CancellationToken cancellationToken)
+    {
+        var protCmd = new FtpCommandEnvelope(FtpCommand.PROT, "P");
+        _ = await SendAsync(protCmd, cancellationToken);
+    }
+
+    public async Task<string?> PwdAsync(CancellationToken cancellationToken)
+    {
+        var resp = await SendAsync(FtpCommand.PWD, cancellationToken);
+        if (resp.Code.IsError()) return null;
+        if (resp.Code != CFtpStatusCode.Code257PathnameCreated) return null;
+
+        var pwdParser = FtpModelParser.CreatePwdRegex();
+        var parsed = pwdParser.Match(resp.Message);
+        if (parsed.Success == false) return null;
+
+        return parsed.Groups["path"].Value;
+    }
+
+    public async Task QuitAsync(CancellationToken cancellationToken)
+    {
+        _ = await SendAsync(FtpCommand.QUIT, cancellationToken);
+    }
+
+    public async Task RenameAsync(string fromName, string toName, CancellationToken cancellationToken)
+    {
+        var rnfrCmd = new FtpCommandEnvelope(FtpCommand.RNFR, fromName);
+        var renameFromResponse = await SendAsync(rnfrCmd, cancellationToken);
+        if (renameFromResponse.Code != CFtpStatusCode.Code350FileCommandPending)
+            throw new FtpException(renameFromResponse.Message);
+
+        var rntoCmd = new FtpCommandEnvelope(FtpCommand.RNTO, toName);
+        var renameToResponse = await SendAsync(rntoCmd, cancellationToken);
+        if (renameToResponse.Code is not (CFtpStatusCode.Code250FileActionOK or CFtpStatusCode.Code226ClosingData))
+            throw new FtpException(renameFromResponse.Message);
+    }
+
+    public void ResetTimeouts()
+    {
+        _ftpStream.ReadTimeout = _configuration.TimeoutSeconds * SecondsToMilli;
+        _ftpStream.WriteTimeout = _configuration.TimeoutSeconds * SecondsToMilli;
+    }
+
+    public async Task<RmdResult> RmdAsync(string directory, CancellationToken cancellationToken)
+    {
+        var cmd = new FtpCommandEnvelope(FtpCommand.RMD, directory);
+        await SendAsync(cmd, cancellationToken);
+        var resp = await _parser.WaitResponseAsync();
+        if (resp.Code.IsError()) return RmdResult.Error;
+
+        switch (resp.Code)
+        {
+            case CFtpStatusCode.Code200CommandOK:
+            case CFtpStatusCode.Code250FileActionOK:
+                return RmdResult.Ok;
+
+            case CFtpStatusCode.Code550ActionNotTakenFileUnavailable:
+                return RmdResult.NotEmpty;
+
+            default:
+                throw new FtpException(resp.Message);
+        }
+    }
+
+    public async Task<bool> SendOptsAsync(string optsArg, CancellationToken cancellation)
+    {
+        var resp = await SendAsync($"OPTS {optsArg}", cancellation);
+        if (resp.Code.IsError()) return false;
+        // 200 Always in UTF8 mode.
+        return resp.Code == CFtpStatusCode.Code200CommandOK;
+    }
+
+    public async Task<bool> SendPassAsync(string pass, CancellationToken cancellation)
+    {
+        var resp = await SendAsync(new FtpCommandEnvelope(FtpCommand.PASS, pass), cancellation);
+        if (resp.Code.IsError()) return false;
+        if (resp.Code != CFtpStatusCode.Code230LoggedInProceed) return false;
+        return true;
+    }
+
+    public async Task<bool> SendUserAsync(string user, CancellationToken cancellation)
+    {
+        var resp = await SendAsync(new FtpCommandEnvelope(FtpCommand.USER, user), cancellation);
+        if (resp.Code.IsError()) return false;
+        return resp.Code is CFtpStatusCode.Code331SendPasswordCommand or CFtpStatusCode.Code220Motd or CFtpStatusCode.Code230LoggedInProceed;
+    }
+
+    public async Task<long> SizeAsync(string fileName, CancellationToken cancellationToken)
+    {
+        var sizeCmd = new FtpCommandEnvelope(FtpCommand.SIZE, fileName);
+        var resp = await SendAsync(sizeCmd, cancellationToken);
+        if (resp.Code.IsError() || resp.Code != CFtpStatusCode.Code213FileStatus)
+            throw new FtpException(resp.Message);
+        return long.Parse(resp.Message);
+    }
+
+    public async Task TypeAsync(FtpTransferMode transferMode, char secondType)
+    {
+        var typeCmd = new FtpCommandEnvelope(
+            FtpCommand.TYPE,
+            secondType != '\0'
+                ? $"{(char)transferMode} {secondType}"
+                : $"{(char)transferMode}");
+        var resp = await SendAsync(typeCmd);
+        if (resp.Code.IsError() || resp.Code != CFtpStatusCode.Code200CommandOK) throw new FtpException(resp.Message);
+    }
+
+    private Task<(CFtpStatusCode Code, string Message, string[]? AdditionalData)> SendAsync(FtpCommand command, CancellationToken token = default)
+        => SendAsync(new FtpCommandEnvelope(command), token);
+
+    private Task<(CFtpStatusCode Code, string Message, string[]? AdditionalData)> SendAsync(FtpCommandEnvelope envelope, CancellationToken token = default)
+    {
+        string commandString = envelope.GetCommandString();
+        return SendAsync(commandString, token);
+    }
+
+    private async Task<(CFtpStatusCode Code, string Message, string[]? AdditionalData)> SendAsync(string command, CancellationToken token = default)
+    {
+        await _sendSemaphore.WaitAsync(token);
+
+        try
+        {
+            _logger?.LogDebug("[CoreFtp] Sending command: {commandToPrint}", command);
+            var tempResponseTask = _parser.WaitResponseAsync();
+            await WriteLineAsync(command, token);
+            return await tempResponseTask;
+        }
+        finally
+        {
+            _sendSemaphore.Release();
+        }
+    }
+
+    public void SetTimeouts(int milliseconds)
+    {
+        _ftpStream.ReadTimeout = milliseconds;
+        _ftpStream.WriteTimeout = milliseconds;
+    }
+
+    public int? SocketDataAvailable()
+        => _ftpSocket?.Available;
+
+    private async Task ActivateEncryptionAsync()
+    {
+        if (!IsConnected)
+            throw new InvalidOperationException("The FtpSocketStream object is not connected.");
+
+        if (_ftpStream == null)
+            throw new InvalidOperationException("The base network stream is null.");
 
         if (IsEncrypted)
-            await socketStream.ActivateEncryptionAsync();
-        return socketStream;
-    }
+            return;
 
-    public async IAsyncEnumerable<string> ReadLineAsync_DEBUG(Encoding encoding, [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        if (encoding == null)
-            throw new ArgumentNullException(nameof(encoding));
-
-        int count;
-        var data = new List<byte>(10);
-        byte[] single = new byte[1];
-
-    loop:
+        try
         {
-            await FtpSocket!.ReceiveAsync(single, SocketFlags.Peek, cancellationToken);
-            count = await _ftpStream!.ReadAsync(single, cancellationToken);
-            if (count == 0) yield break;
-
-            data.Add(single[0]);
-            if (data.Count > 100_000) throw new ArgumentOutOfRangeException(); // non convinto
-
-            if (single[0] == '\n')
-            {
-                string ascii = Encoding.ASCII.GetString(data.ToArray());
-                yield return ascii.TrimEnd();
-                data.Clear();
-            }
-            goto loop;
+            _sslStream = new SslStream(_ftpStream, true, (sender, certificate, chain, sslPolicyErrors) => OnValidateCertificate(certificate, chain, sslPolicyErrors));
+            await _sslStream.AuthenticateAsClientAsync(_configuration.Host, _configuration.ClientCertificates, _configuration.SslProtocols, true);
+        }
+        catch (AuthenticationException authErr)
+        {
+            _logger?.LogError(authErr, "[CoreFtp] Could not activate encryption for the connection");
+            throw;
         }
     }
 
-    public async IAsyncEnumerable<string> ReadLineAsync_DEBUG2(Encoding encoding, [EnumeratorCancellation] CancellationToken cancellationToken)
+    private async Task<Socket?> ConnectSocketAsync(string host, int port, CancellationToken token)
     {
-        if (encoding == null)
-            throw new ArgumentNullException(nameof(encoding));
-
-        const int MaxReadSize = 512;
-        const byte Lf = (byte)'\n';
-
-        var data = new List<byte>(10);
-        byte[] peekBuf = new byte[MaxReadSize];
-
-    loop:
+        try
         {
-            int peekCount = await FtpSocket!.ReceiveAsync(peekBuf, SocketFlags.Peek, cancellationToken);
-            if (peekCount == 0) yield break;
-
-            int pos = Array.IndexOf(peekBuf, Lf);
-            if (pos < 0)
+            _logger?.LogDebug("[CoreFtp] Connecting");
+            var ipEndpoint = await _dnsResolver.ResolveAsync(host, port, _configuration.IpVersion, token);
+            if (ipEndpoint == null)
             {
-                byte[] accum = new byte[peekCount];
-                int accumCount = await FtpSocket.ReceiveAsync(accum, cancellationToken);
-                if (accumCount != accum.Length) throw new Exception("wtf");
-                data.AddRange(peekBuf);
-                goto loop;
+                _logger?.LogWarning("[CoreFtp] WARNING endpoint was null for {host}:{port}", host, port);
+                return null;
             }
-
-            byte[] bufToLf = new byte[pos + 1];
-            int readCount = await FtpSocket.ReceiveAsync(bufToLf, cancellationToken);
-            if (readCount != bufToLf.Length) throw new Exception("wtf");
-
-            data.AddRange(bufToLf);
-            if (data.Count > 100_000) throw new ArgumentOutOfRangeException();
-
-            string ascii = Encoding.ASCII.GetString(data.ToArray());
-            yield return ascii.TrimEnd();
-
-            data.Clear();
-            goto loop;
+            var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp)
+            {
+                ReceiveTimeout = _configuration.TimeoutSeconds * SecondsToMilli
+            };
+            await socket.ConnectAsync(ipEndpoint);
+            socket.LingerState = new LingerOption(true, 0);
+            return socket;
+        }
+        catch (Exception socketErr)
+        {
+            _logger?.LogError(socketErr, "[CoreFtp] Could not to connect socket {host}:{port}", host, port);
+            throw;
         }
     }
 
-    // TODO use Pipe
+    private async Task<bool> ConnectStreamAsync(string host, int port, CancellationToken token)
+    {
+        _logger?.LogDebug("[CoreFtp] Connecting stream on {host}:{port}", host, port);
+        _ftpSocket = await ConnectSocketAsync(host, port, token);
+        if (_ftpSocket == null) return false;
+        _ftpStream = new NetworkStream(_ftpSocket);
+        ResetTimeouts();
+        _lastActivity = DateTime.Now;
+
+        if (_configuration.ShouldEncrypt && _configuration.EncryptionType == FtpEncryption.Implicit)
+            await ActivateEncryptionAsync();
+
+        _logger?.LogDebug("[CoreFtp] Waiting for welcome message");
+        return true;
+    }
+
+    private async Task EncryptExplicitly(CancellationToken token)
+    {
+        _logger?.LogDebug("[CoreFtp] Encrypting explicitly");
+        await SendAsync("AUTH TLS", token);
+        var response = await _parser.WaitResponseAsync();
+
+        if (response.Code.IsError())
+            throw new InvalidOperationException();
+
+        await ActivateEncryptionAsync();
+    }
+
+    private async Task EncryptImplicitly(CancellationToken token)
+    {
+        _logger?.LogDebug("[CoreFtp] Encrypting implicitly");
+        await ActivateEncryptionAsync();
+        var response = await _parser.WaitResponseAsync();
+
+        if (response.Code.IsError())
+            throw new IOException($"Could not securely connect to host {_configuration.Host}:{_configuration.Port}");
+    }
+
+    private bool OnValidateCertificate(X509Certificate _, X509Chain __, SslPolicyErrors errors)
+        => _configuration.IgnoreCertificateErrors || errors == SslPolicyErrors.None;
+
+    // TODO use Pipe o channel
     // https://learn.microsoft.com/en-us/dotnet/standard/io/pipelines
-    public async IAsyncEnumerable<string> ReadLineAsyncEnum(Encoding encoding, [EnumeratorCancellation] CancellationToken cancellationToken)
+    private async IAsyncEnumerable<string> ReadLineAsyncEnum(Encoding encoding, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         const int MaxReadSize = 512;
 
@@ -291,262 +476,22 @@ public sealed partial class FtpControlStream
             count = await stream.ReadAsync(buf, cancellationToken);
             if (count == 0) break;
             data.Write(buf.AsSpan()[..count]);
-            // UNDONE non mi chiude lui la connessione, devo processare codice 226 mi sa
             foreach (string line in SplitEncodePartial(data.WrittenSpan, encoding, split_status))
                 yield return line;
         }
         while (count > 0);
     }
 
-    public async Task<ICollection<string>> ReadLinesAsync(Encoding encoding, CancellationToken cancellationToken)
+    // TODO stop
+    private async Task ReadLoopAsync()
     {
-        const int MaxReadSize = 512;
-
-        if (encoding == null)
-            throw new ArgumentNullException(nameof(encoding));
-
-        int count;
-        var data = new ArrayBufferWriter<byte>();
-        var stream = GetStream()!;
-        do
+        await foreach (string controlReponse in ReadLineAsyncEnum(Encoding, CancellationToken.None))
         {
-            var buffer = new byte[MaxReadSize];
-            count = await stream.ReadAsync(buffer, cancellationToken);
-            if (count == 0) break;
-            data.Write(buffer.AsSpan()[..count]);
+            _lastActivity = DateTime.Now;
+            // potrei usare semaphore
+            _logger?.LogDebug("[CoreFtp] {line}", controlReponse);
+            _parser.Parse(controlReponse);
         }
-        while (count > 0);
-
-        return SplitEncode(data.WrittenSpan, encoding);
-    }
-
-    public async Task WriteLineAsync(string buf, CancellationToken cancellationToken)
-    {
-        var data = Encoding.GetBytes($"{buf}\r\n");
-        await _ftpStream!.WriteAsync(data, cancellationToken);
-    }
-
-    public void ResetTimeouts()
-    {
-        _ftpStream.ReadTimeout = Configuration.TimeoutSeconds * SecondsToMilli;
-        _ftpStream.WriteTimeout = Configuration.TimeoutSeconds * SecondsToMilli;
-    }
-
-    public Task<IAsyncEnumerable<string>> SendCommandReaderAsync(FtpCommand command, CancellationToken token = default)
-        => SendReadAsync(new FtpCommandEnvelope(command), token);
-
-    public Task<FtpResponse> SendCommandReadFtpResponseAsync(FtpCommandEnvelope envelope, CancellationToken token = default)
-    {
-        string commandString = envelope.GetCommandString();
-        return SendRead2Async(commandString, token);
-    }
-
-    public Task<IAsyncEnumerable<string>> SendReadAsync(FtpCommandEnvelope envelope, CancellationToken token = default)
-    {
-        string commandString = envelope.GetCommandString();
-        return SendCommandReaderAsync(commandString, token);
-    }
-
-    public async Task<FtpResponse> SendRead2Async(string command, CancellationToken token = default)
-    {
-        await Semaphore.WaitAsync(token);
-
-        try
-        {
-            if (SocketDataAvailable() is int size && size > 0)
-            {
-                var staleDataResult = await GetFtpResponseAsync(token);
-                Logger?.LogWarning("[CoreFtp] Stale data on socket ({size}): {responseMessage}", size, staleDataResult.ResponseMessage);
-            }
-
-            string commandToPrint = command.StartsWith(FtpCommand.PASS.ToString())
-                ? "PASS ***"
-                : command;
-
-            Logger?.LogDebug("[CoreFtp] Sending command: {commandToPrint}", commandToPrint);
-            await WriteLineAsync(command, token);
-
-            return await GetFtpResponseAsync(token);
-        }
-        finally
-        {
-            Semaphore.Release();
-        }
-    }
-
-    public async Task<IAsyncEnumerable<string>> SendCommandReaderAsync(string command, CancellationToken token = default)
-    {
-        await Semaphore.WaitAsync(token);
-
-        try
-        {
-            if (SocketDataAvailable() is int size && size > 0)
-            {
-                var staleDataResult = await GetFtpResponseAsync(token);
-                Logger?.LogWarning("[CoreFtp] Stale data on socket ({size}): {responseMessage}", size, staleDataResult.ResponseMessage);
-            }
-
-            // TODO log write
-            await WriteLineAsync(command, token);
-            return await GetResponseReaderAsync(token);
-        }
-        finally
-        {
-            Semaphore.Release();
-        }
-    }
-
-    public void SetTimeouts(int milliseconds)
-    {
-        _ftpStream.ReadTimeout = milliseconds;
-        _ftpStream.WriteTimeout = milliseconds;
-    }
-
-    public int? SocketDataAvailable()
-        => FtpSocket?.Available;
-
-    private async Task ActivateEncryptionAsync()
-    {
-        if (!IsConnected)
-            throw new InvalidOperationException("The FtpSocketStream object is not connected.");
-
-        if (_ftpStream == null)
-            throw new InvalidOperationException("The base network stream is null.");
-
-        if (IsEncrypted)
-            return;
-
-        try
-        {
-            SslStream = new SslStream(_ftpStream, true, (sender, certificate, chain, sslPolicyErrors) => OnValidateCertificate(certificate, chain, sslPolicyErrors));
-            await SslStream.AuthenticateAsClientAsync(Configuration.Host, Configuration.ClientCertificates, Configuration.SslProtocols, true);
-        }
-        catch (AuthenticationException authErr)
-        {
-            Logger?.LogError(authErr, "[CoreFtp] Could not activate encryption for the connection");
-            throw;
-        }
-    }
-
-    private async Task ConnectStreamAsync(string host, int port, CancellationToken token)
-    {
-        try
-        {
-            await Semaphore.WaitAsync(token);
-            Logger?.LogDebug("[CoreFtp] Connecting stream on {host}:{port}", host, port);
-            FtpSocket = await ConnectSocketAsync(host, port, token);
-            if (FtpSocket == null) return;
-            _ftpStream = new NetworkStream(FtpSocket);
-            ResetTimeouts();
-            LastActivity = DateTime.Now;
-
-            if (IsDataConnection)
-            {
-                if (Configuration.ShouldEncrypt && Configuration.EncryptionType == FtpEncryption.Explicit)
-                    await ActivateEncryptionAsync();
-
-                return;
-            }
-
-            if (Configuration.ShouldEncrypt && Configuration.EncryptionType == FtpEncryption.Implicit)
-                await ActivateEncryptionAsync();
-
-            Logger?.LogDebug("[CoreFtp] Waiting for welcome message");
-
-            while (true)
-            {
-                if (SocketDataAvailable() is > 0)
-                {
-                    var reader = await GetResponseReaderAsync(token);
-                    _ = await FtpModelParser.ParseMotdAsync(reader);
-                    return;
-                }
-                await Task.Delay(10, token);
-            }
-        }
-        finally
-        {
-            Semaphore.Release();
-        }
-    }
-
-    private async Task<Socket?> ConnectSocketAsync(string host, int port, CancellationToken token)
-    {
-        try
-        {
-            Logger?.LogDebug("[CoreFtp] Connecting");
-            var ipEndpoint = await DnsResolver.ResolveAsync(host, port, Configuration.IpVersion, token);
-            if (ipEndpoint == null)
-            {
-                Logger?.LogWarning("[CoreFtp] WARNING endpoint was null for {host}:{port}", host, port);
-                return null;
-            }
-            var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp)
-            {
-                ReceiveTimeout = Configuration.TimeoutSeconds * SecondsToMilli
-            };
-            await socket.ConnectAsync(ipEndpoint);
-            socket.LingerState = new LingerOption(true, 0);
-            return socket;
-        }
-        catch (Exception socketErr)
-        {
-            Logger?.LogError(socketErr, "[CoreFtp] Could not to connect socket {host}:{port}", host, port);
-            throw;
-        }
-    }
-
-    [GeneratedRegex("^(?<statusCode>[0-9]{3}) (?<message>.*)$")]
-    private static partial Regex CreateFtpRegex();
-
-    private async Task EncryptExplicitly(CancellationToken token)
-    {
-        Logger?.LogDebug("[CoreFtp] Encrypting explicitly");
-        var response = await SendRead2Async("AUTH TLS", token);
-
-        if (response.IsSuccess == false)
-            throw new InvalidOperationException();
-
-        await ActivateEncryptionAsync();
-    }
-
-    private async Task EncryptImplicitly(CancellationToken token)
-    {
-        Logger?.LogDebug("[CoreFtp] Encrypting implicitly");
-        await ActivateEncryptionAsync();
-
-        var response = await GetFtpResponseAsync(token);
-        if (!response.IsSuccess)
-        {
-            throw new IOException($"Could not securely connect to host {Configuration.Host}:{Configuration.Port}");
-        }
-    }
-
-    private bool OnValidateCertificate(X509Certificate _, X509Chain __, SslPolicyErrors errors)
-        => Configuration.IgnoreCertificateErrors || errors == SslPolicyErrors.None;
-
-    private static ICollection<string> SplitEncode(ReadOnlySpan<byte> writtenSpan, Encoding encoding)
-    {
-        List<string> lines = new(1);
-        int prev_pos = 0;
-
-        do
-        {
-            int newline_pos = writtenSpan[prev_pos..].IndexOf((byte)'\n');
-            if (newline_pos == -1)
-            {
-                if (writtenSpan.Length > 0) throw new InvalidOperationException("non-terminated data");
-                break;
-            }
-            newline_pos += prev_pos;
-            var token = writtenSpan[prev_pos..newline_pos].TrimEnd((byte)'\r');
-            string encoded = encoding.GetString(token);
-            lines.Add(encoded);
-            prev_pos = newline_pos + 1;
-        }
-        while (prev_pos < writtenSpan.Length);
-
-        return lines;
     }
 
     private static ICollection<string> SplitEncodePartial(ReadOnlySpan<byte> writtenSpan, Encoding encoding, PartialSplitStatus status)
@@ -568,7 +513,31 @@ public sealed partial class FtpControlStream
         return lines;
     }
 
-    private class PartialSplitStatus
+    private async Task WriteLineAsync(string buf, CancellationToken cancellationToken)
+    {
+        var data = Encoding.GetBytes($"{buf}\r\n");
+        await _ftpStream!.WriteAsync(data, cancellationToken);
+    }
+
+    public async Task StorAsync(string fileName, CancellationToken cancellationToken)
+    {
+        var ftpCmd = new FtpCommandEnvelope(FtpCommand.STOR, fileName);
+        var resp = await SendAsync(ftpCmd, cancellationToken);
+        if (resp.Code.IsError()) throw new FtpException();
+        if (resp.Code is not (CFtpStatusCode.Code125DataAlreadyOpen or CFtpStatusCode.Code150OpeningData or CFtpStatusCode.Code226ClosingData))
+            throw new FtpException(resp.Message);
+    }
+
+    public async Task RetrAsync(string fileName, CancellationToken cancellationToken)
+    {
+        var ftpCmd = new FtpCommandEnvelope(FtpCommand.RETR, fileName);
+        var resp = await SendAsync(ftpCmd, cancellationToken);
+        if (resp.Code.IsError()) throw new FtpException();
+        if (resp.Code is not (CFtpStatusCode.Code125DataAlreadyOpen or CFtpStatusCode.Code150OpeningData or CFtpStatusCode.Code226ClosingData))
+            throw new FtpException(resp.Message);
+    }
+
+    private sealed class PartialSplitStatus
     {
         public int PreviousPosition = 0;
     }
