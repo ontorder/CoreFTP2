@@ -1,12 +1,12 @@
-using System;
 using AsyncFriendlyStackTrace;
+using CoreFtp.Enum;
 using FluentAssertions;
 using Xunit;
 using Xunit.Abstractions;
 
 namespace CoreFtp.Tests.Integration.FtpClientTests.Directories;
 
-public class When_deleting_directories : TestBase
+public sealed class When_deleting_directories : TestBase
 {
     public When_deleting_directories(ITestOutputHelper outputHelper) : base(outputHelper) { }
 

@@ -1,9 +1,10 @@
+using CoreFtp.Enum;
 using Xunit;
 using Xunit.Abstractions;
 
 namespace CoreFtp.Tests.Integration.FtpClientTests;
 
-public class When_sending_a_custom_command : TestBase
+public sealed class When_sending_a_custom_command : TestBase
 {
     public When_sending_a_custom_command( ITestOutputHelper outputHelper ) : base( outputHelper ) {}
 

@@ -1,10 +1,11 @@
-﻿using FluentAssertions;
+﻿using CoreFtp.Enum;
+using FluentAssertions;
 using Xunit;
 using Xunit.Abstractions;
 
 namespace CoreFtp.Tests.Integration.FtpClientTests.CustomExamples;
 
-public class When_connecting_to_bom_gov_au : TestBase
+public sealed class When_connecting_to_bom_gov_au : TestBase
 {
     public When_connecting_to_bom_gov_au( ITestOutputHelper outputHelper ) : base( outputHelper ) { }
 

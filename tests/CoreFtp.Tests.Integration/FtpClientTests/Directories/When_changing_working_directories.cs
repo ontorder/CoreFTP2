@@ -1,6 +1,4 @@
-﻿using System;
-using System.Threading.Tasks;
-using CoreFtp.Enum;
+﻿using CoreFtp.Enum;
 using CoreFtp.Infrastructure;
 using FluentAssertions;
 using Xunit;
@@ -8,7 +6,7 @@ using Xunit.Abstractions;
 
 namespace CoreFtp.Tests.Integration.FtpClientTests.Directories;
 
-public class When_changing_working_directories : TestBase
+public sealed class When_changing_working_directories : TestBase
 {
     public When_changing_working_directories(ITestOutputHelper outputHelper) : base(outputHelper) { }
 

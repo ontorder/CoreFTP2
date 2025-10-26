@@ -1,11 +1,11 @@
-using System;
+using CoreFtp.Enum;
 using FluentAssertions;
 using Xunit;
 using Xunit.Abstractions;
 
 namespace CoreFtp.Tests.Integration.FtpClientTests;
 
-public class When_renaming_a_node : TestBase
+public sealed class When_renaming_a_node : TestBase
 {
     public When_renaming_a_node(ITestOutputHelper outputHelper) : base(outputHelper) { }
 

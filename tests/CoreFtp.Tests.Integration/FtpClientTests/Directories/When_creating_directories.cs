@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CoreFtp.Enum;
+using CoreFtp.Infrastructure;
 using FluentAssertions;
 using Xunit;
 using Xunit.Abstractions;

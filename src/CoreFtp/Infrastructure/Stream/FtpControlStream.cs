@@ -182,14 +182,15 @@ public sealed partial class FtpControlStream
         return features.ToArray();
     }
 
-    public async Task<bool> MlsdAsync(CancellationToken cancellation)
+    public async Task<(bool, Task?)> MlsdAsync(CancellationToken cancellation)
     {
         var resp = await SendAsync(new FtpCommandEnvelope(FtpCommand.MLSD), cancellation);
-        if (resp.Code.IsError()) return false;
-        return resp.Code is CFtpStatusCode.Code125DataAlreadyOpen or CFtpStatusCode.Code150OpeningData;
+        if (resp.Code.IsError()) return (false, null);
+        var ok = resp.Code is CFtpStatusCode.Code125DataAlreadyOpen or CFtpStatusCode.Code150OpeningData;
+        return (ok, ok ? _parser.WaitResponseAsync() : null);
     }
 
-    public async Task<bool> ListAsync(DirSort? sortBy, CancellationToken cancellation)
+    public async Task<(bool, Task?)> ListAsync(DirSort? sortBy, CancellationToken cancellation)
     {
         string arguments = sortBy switch
         {
@@ -200,8 +201,9 @@ public sealed partial class FtpControlStream
         };
         var listCmd = new FtpCommandEnvelope(FtpCommand.LIST, arguments);
         var resp = await SendAsync(listCmd, cancellation);
-        if (resp.Code.IsError()) return false;
-        return true; // ma non devo fare 125/150?
+        if (resp.Code.IsError()) return (false, null);
+        // ma non devo fare 125/150?
+        return (true, _parser.WaitResponseAsync());
     }
 
     public async Task MkdAsync(string directory, CancellationToken cancellationToken)
@@ -265,6 +267,15 @@ public sealed partial class FtpControlStream
     {
         _ftpStream.ReadTimeout = _configuration.TimeoutSeconds * SecondsToMilli;
         _ftpStream.WriteTimeout = _configuration.TimeoutSeconds * SecondsToMilli;
+    }
+
+    public async Task RetrAsync(string fileName, CancellationToken cancellationToken)
+    {
+        var ftpCmd = new FtpCommandEnvelope(FtpCommand.RETR, fileName);
+        var resp = await SendAsync(ftpCmd, cancellationToken);
+        if (resp.Code.IsError()) throw new FtpException();
+        if (resp.Code is not (CFtpStatusCode.Code125DataAlreadyOpen or CFtpStatusCode.Code150OpeningData or CFtpStatusCode.Code226ClosingData))
+            throw new FtpException(resp.Message);
     }
 
     public async Task<RmdResult> RmdAsync(string directory, CancellationToken cancellationToken)
@@ -365,6 +376,24 @@ public sealed partial class FtpControlStream
 
     public int? SocketDataAvailable()
         => _ftpSocket?.Available;
+
+    public async Task StorAsync(string fileName, CancellationToken cancellationToken)
+    {
+        var ftpCmd = new FtpCommandEnvelope(FtpCommand.STOR, fileName);
+        var resp = await SendAsync(ftpCmd, cancellationToken);
+        if (resp.Code.IsError()) throw new FtpException();
+        if (resp.Code is not (CFtpStatusCode.Code125DataAlreadyOpen or CFtpStatusCode.Code150OpeningData or CFtpStatusCode.Code226ClosingData))
+            throw new FtpException(resp.Message);
+    }
+
+    public async Task WaitEndDataStreamAsync()
+    {
+        var resp = await _parser.WaitResponseAsync();
+        if (resp.Code.IsError())
+            throw new FtpException(resp.Message);
+        if (resp.Code != CFtpStatusCode.Code226ClosingData)
+            throw new FtpException(resp.Message);
+    }
 
     private async Task ActivateEncryptionAsync()
     {
@@ -517,24 +546,6 @@ public sealed partial class FtpControlStream
     {
         var data = Encoding.GetBytes($"{buf}\r\n");
         await _ftpStream!.WriteAsync(data, cancellationToken);
-    }
-
-    public async Task StorAsync(string fileName, CancellationToken cancellationToken)
-    {
-        var ftpCmd = new FtpCommandEnvelope(FtpCommand.STOR, fileName);
-        var resp = await SendAsync(ftpCmd, cancellationToken);
-        if (resp.Code.IsError()) throw new FtpException();
-        if (resp.Code is not (CFtpStatusCode.Code125DataAlreadyOpen or CFtpStatusCode.Code150OpeningData or CFtpStatusCode.Code226ClosingData))
-            throw new FtpException(resp.Message);
-    }
-
-    public async Task RetrAsync(string fileName, CancellationToken cancellationToken)
-    {
-        var ftpCmd = new FtpCommandEnvelope(FtpCommand.RETR, fileName);
-        var resp = await SendAsync(ftpCmd, cancellationToken);
-        if (resp.Code.IsError()) throw new FtpException();
-        if (resp.Code is not (CFtpStatusCode.Code125DataAlreadyOpen or CFtpStatusCode.Code150OpeningData or CFtpStatusCode.Code226ClosingData))
-            throw new FtpException(resp.Message);
     }
 
     private sealed class PartialSplitStatus

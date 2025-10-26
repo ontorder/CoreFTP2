@@ -7,6 +7,7 @@ using CoreFtp.Infrastructure.Stream;
 using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -132,12 +133,12 @@ public sealed class FtpClient : IFtpClient
 
         var allNodes = await ListAllAsync(cancellationToken);
 
-        foreach (var file in allNodes.Where(x => x.NodeType == FtpNodeType.File))
+        foreach (var file in allNodes.Where(static x => x.NodeType == FtpNodeType.File))
         {
             await DeleteFileAsync(file.Name, cancellationToken);
         }
 
-        foreach (var dir in allNodes.Where(x => x.NodeType == FtpNodeType.Directory))
+        foreach (var dir in allNodes.Where(static x => x.NodeType == FtpNodeType.Directory))
         {
             await DeleteDirectoryAsync(dir.Name, cancellationToken);
         }
@@ -171,11 +172,26 @@ public sealed class FtpClient : IFtpClient
             await _dataSocketSemaphore.WaitAsync(cancellationToken);
             var dataStream = await ConnectDataStreamAsync(cancellationToken);
             var dp = InitDirectoryProvider(dataStream);
-            return await dp.ListAllAsync(cancellationToken);
+            var start = await StartDirectoryEnumAsync(sortBy: null, cancellationToken);
+            if (start.Ok == false)
+            {
+                // log problema
+                throw new Exception();
+            }
+            var endTask = WaitDataEndAsync(dataStream, start.WaitEndAsync!);
+            var enumerated = await dp.ListAllAsync(cancellationToken);
+            await endTask;
+            return enumerated;
         }
         finally
         {
             _dataSocketSemaphore.Release();
+        }
+
+        static async Task WaitDataEndAsync(FtpTextDataStream dataStream, Task endDataStreamAsync)
+        {
+            await endDataStreamAsync;
+            dataStream.Close();
         }
     }
 
@@ -192,15 +208,32 @@ public sealed class FtpClient : IFtpClient
             await _dataSocketSemaphore.WaitAsync(cancellationToken);
             var dataStream = await ConnectDataStreamAsync(cancellationToken);
             var dp = InitDirectoryProvider(dataStream);
-            return await dp.ListFilesAsync(sortBy, cancellationToken);
+            var start = await StartDirectoryEnumAsync(sortBy, cancellationToken);
+            if (start.Ok == false)
+            {
+                // log problema
+                throw new Exception();
+            }
+            var endTask = WaitDataEndAsync(dataStream, start.WaitEndAsync!);
+            var enumerated = await dp.ListFilesAsync(sortBy, cancellationToken);
+            await endTask;
+            return enumerated;
         }
         finally
         {
             _dataSocketSemaphore.Release();
         }
+
+        static async Task WaitDataEndAsync(FtpTextDataStream dataStream, Task endDataStreamAsync)
+        {
+            await endDataStreamAsync;
+            dataStream.Close();
+        }
     }
 
-    public async IAsyncEnumerable<FtpNodeInformation> ListFilesAsyncEnum(DirSort? sortBy = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<FtpNodeInformation> ListFilesAsyncEnum(
+        DirSort? sortBy = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         EnsureLoggedIn();
         try
@@ -211,18 +244,25 @@ public sealed class FtpClient : IFtpClient
             var dataStream = await ConnectDataStreamAsync(cancellationToken);
             var dp = InitDirectoryProvider(dataStream);
             var start = await StartDirectoryEnumAsync(sortBy, cancellationToken);
-            if (start == false)
+            if (start.Ok == false)
             {
                 // log problema
                 yield break;
             }
-
+            var endTask = WaitDataEndAsync(dataStream, start.WaitEndAsync!);
             await foreach (var file in dp.ListFilesAsyncEnum(sortBy, cancellationToken))
                 yield return file;
+            await endTask;
         }
         finally
         {
             _dataSocketSemaphore.Release();
+        }
+
+        static async Task WaitDataEndAsync(FtpTextDataStream dataStream, Task endDataStreamAsync)
+        {
+            await endDataStreamAsync;
+            dataStream.Close();
         }
     }
 
@@ -331,7 +371,7 @@ public sealed class FtpClient : IFtpClient
         _logger?.LogDebug("[CoreFtp] Opening file read stream for {filePath}", filePath);
         var segments = filePath
             .Split('/')
-            .Where(x => !x.IsNullOrWhiteSpace())
+            .Where(static x => !x.IsNullOrWhiteSpace())
             .ToList();
         await CreateDirectoryStructureRecursively(segments.Take(segments.Count - 1).ToArray(), filePath.StartsWith("/"), cancellationToken);
 
@@ -490,30 +530,12 @@ public sealed class FtpClient : IFtpClient
     }
 
     /// <summary>
-    /// Throws an exception if the server response is not one of the given acceptable codes
-    /// </summary>
-    /// <param name="response"></param>
-    /// <param name="codes"></param>
-    /// <returns></returns>
-    private async Task BailIfResponseNotAsync(FtpResponse response, CancellationToken cancellationToken, params CFtpStatusCode[] codes)
-    {
-        if (codes.Any(x => x == response.FtpStatusCode))
-            return;
-
-        _logger?.LogDebug("[CoreFtp] Bailing due to response codes being {ftpStatusCode}, which is not one of: [{codes}]",
-            response.FtpStatusCode, string.Join(",", codes));
-
-        await LogOutAsync(cancellationToken);
-        throw new FtpException(response.ResponseMessage);
-    }
-
-    /// <summary>
     /// Determine if the FTP server supports UTF8 encoding, and set it to the default if possible
     /// </summary>
     /// <returns></returns>
     private async Task EnableUtf8IfPossible()
     {
-        if (Equals(_controlStream.Encoding, Encoding.ASCII) && _features.Any(x => x == Constants.UTF8))
+        if (Equals(_controlStream.Encoding, Encoding.ASCII) && _features.Any(static _ => _ == Constants.UTF8))
         {
             _controlStream.Encoding = Encoding.UTF8;
         }
@@ -543,7 +565,7 @@ public sealed class FtpClient : IFtpClient
         return socketStream;
     }
 
-    private async Task<bool> StartDirectoryEnumAsync(DirSort? sortBy, CancellationToken cancellation)
+    private async Task<(bool Ok, Task? WaitEndAsync)> StartDirectoryEnumAsync(DirSort? sortBy, CancellationToken cancellation)
         => _directoryProviderType switch
         {
             DirectoryProviderType.MLSD => await _controlStream.MlsdAsync(cancellation),
@@ -554,9 +576,9 @@ public sealed class FtpClient : IFtpClient
 
 file static class FtpClientFeaturesExtensions
 {
-    public static bool UsesMlsd(this FtpClient client) => client.Features.Any(_ => _ == "MLSD");
+    public static bool UsesMlsd(this FtpClient client) => client.Features.Any(static _ => _ == "MLSD");
 
-    public static bool UsesEpsv(this FtpClient client) => client.Features.Any(_ => _ == "EPSV");
+    public static bool UsesEpsv(this FtpClient client) => client.Features.Any(static _ => _ == "EPSV");
 
-    public static bool UsesPasv(this FtpClient client) => client.Features.Any(_ => _ == "PASV");
+    public static bool UsesPasv(this FtpClient client) => client.Features.Any(static _ => _ == "PASV");
 }

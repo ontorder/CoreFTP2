@@ -25,6 +25,13 @@ public sealed class FtpTextDataStream
         _logger = logger;
     }
 
+    public void Close()
+    {
+        _ftpStream.Close();
+        _sslStream?.Close();
+        _ftpStream.Dispose();
+    }
+
     public System.IO.Stream GetStream()
         => _sslStream ?? (System.IO.Stream)_ftpStream;
 
