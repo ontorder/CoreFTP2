@@ -1,35 +1,31 @@
-namespace CoreFtp.Tests.Integration.FtpClientTests
+using Xunit;
+using Xunit.Abstractions;
+
+namespace CoreFtp.Tests.Integration.FtpClientTests;
+
+public class When_sending_a_custom_command : TestBase
 {
-    using System.Linq;
-    using System.Threading.Tasks;
-    using Enum;
-    using Xunit;
-    using Xunit.Abstractions;
+    public When_sending_a_custom_command( ITestOutputHelper outputHelper ) : base( outputHelper ) {}
 
-    public class When_sending_a_custom_command : TestBase
+    [ Fact ]
+    public async Task Should_send_custom_command()
     {
-        public When_sending_a_custom_command( ITestOutputHelper outputHelper ) : base( outputHelper ) {}
-
-        [ Fact ]
-        public async Task Should_send_custom_command()
+        using ( var sut = new FtpClient( new FtpClientConfiguration
         {
-            using ( var sut = new FtpClient( new FtpClientConfiguration
-            {
-                Host = Program.FtpConfiguration.Host,
-                Username = Program.FtpConfiguration.Username,
-                Password = Program.FtpConfiguration.Password,
-                Port = 990,
-                EncryptionType = FtpEncryption.Implicit,
-                IgnoreCertificateErrors = true
-            } ) )
-            {
-                sut.Logger = Logger;
+            Host = Program.FtpConfiguration.Host,
+            Username = Program.FtpConfiguration.Username,
+            Password = Program.FtpConfiguration.Password,
+            Port = 990,
+            EncryptionType = FtpEncryption.Implicit,
+            IgnoreCertificateErrors = true
+        } ) )
+        {
+            sut.Logger = Logger;
 
-                await sut.LoginAsync();
-                var response = await sut.SendCommandAsync( "FEAT" );
-                response.Data.Contains( "UTF8" );
-                await sut.LogOutAsync();
-            }
+            await sut.LoginAsync();
+            var response = await sut.SendCommandAsync( "FEAT" );
+            response.Data.Contains( "UTF8" );
+            await sut.LogOutAsync();
         }
     }
 }

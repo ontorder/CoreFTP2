@@ -2,7 +2,6 @@
 using CoreFtp.Enum;
 using CoreFtp.Infrastructure.Extensions;
 using Microsoft.Extensions.Logging;
-using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
@@ -12,9 +11,6 @@ using System.Runtime.CompilerServices;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace CoreFtp.Infrastructure.Stream;
 

@@ -1,31 +1,24 @@
-﻿namespace CoreFtp.Infrastructure.Extensions
+﻿namespace CoreFtp.Infrastructure.Extensions;
+
+public static class EnumExtensions
 {
-    using System;
-#if NETSTANDARD
-    using System.Reflection;
-#endif
-
-    public static class EnumExtensions
+    public static TEnum? ToNullableEnum<TEnum>(this string operand) where TEnum : struct, IComparable, IFormattable, IConvertible
     {
-        public static TEnum? ToNullableEnum<TEnum>(this string operand) where TEnum : struct, IComparable, IFormattable, IConvertible
+        if (System.Enum.TryParse(operand, true, out TEnum enumOut))
         {
-            TEnum enumOut;
-            if (Enum.TryParse(operand, true, out enumOut))
-            {
-                return enumOut;
-            }
-
-            return null;
+            return enumOut;
         }
 
-        public static TEnum? ToNullableEnum<TEnum>(this int operand) where TEnum : struct, IComparable, IFormattable, IConvertible
-        {
-            if (Enum.IsDefined(typeof(TEnum), operand))
-            {
-                return (TEnum)(object)operand;
-            }
+        return null;
+    }
 
-            return null;
+    public static TEnum? ToNullableEnum<TEnum>(this int operand) where TEnum : struct, IComparable, IFormattable, IConvertible
+    {
+        if (System.Enum.IsDefined(typeof(TEnum), operand))
+        {
+            return (TEnum)(object)operand;
         }
+
+        return null;
     }
 }

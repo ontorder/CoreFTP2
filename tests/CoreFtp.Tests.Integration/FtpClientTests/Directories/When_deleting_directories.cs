@@ -1,15 +1,10 @@
-namespace CoreFtp.Tests.Integration.FtpClientTests.Directories;
-
 using System;
-using System.Linq;
-using System.Threading.Tasks;
 using AsyncFriendlyStackTrace;
-using Enum;
 using FluentAssertions;
-using Helpers;
-using Infrastructure;
 using Xunit;
 using Xunit.Abstractions;
+
+namespace CoreFtp.Tests.Integration.FtpClientTests.Directories;
 
 public class When_deleting_directories : TestBase
 {

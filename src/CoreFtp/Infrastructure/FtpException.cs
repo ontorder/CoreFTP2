@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace CoreFtp.Infrastructure;
+﻿namespace CoreFtp.Infrastructure;
 
 public sealed class FtpException : Exception
 {

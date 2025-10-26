@@ -1,4 +1,3 @@
-namespace CoreFtp.Infrastructure.Stream.Ssl
-{
-    public delegate void FtpSocketStreamSslValidation(FtpControlStream stream, FtpSslValidationEventArgs e);
-}
+namespace CoreFtp.Infrastructure.Stream.Ssl;
+
+public delegate void FtpSocketStreamSslValidation(FtpControlStream stream, FtpSslValidationEventArgs e);

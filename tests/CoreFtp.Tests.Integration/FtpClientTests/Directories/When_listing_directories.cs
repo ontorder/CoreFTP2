@@ -1,14 +1,11 @@
-﻿namespace CoreFtp.Tests.Integration.FtpClientTests.Directories;
-
-using System;
-using System.Threading.Tasks;
+﻿using CoreFtp.Enum;
 using FluentAssertions;
 using Xunit;
-using System.Linq;
-using Enum;
 using Xunit.Abstractions;
 
-public class When_listing_directories : TestBase
+namespace CoreFtp.Tests.Integration.FtpClientTests.Directories;
+
+public sealed class When_listing_directories : TestBase
 {
     public When_listing_directories(ITestOutputHelper outputHelper) : base(outputHelper) { }
 

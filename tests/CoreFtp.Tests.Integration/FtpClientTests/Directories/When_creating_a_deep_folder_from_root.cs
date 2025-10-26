@@ -1,8 +1,6 @@
 ﻿namespace CoreFtp.Tests.Integration.FtpClientTests.Directories;
 
 using System;
-using System.Linq;
-using System.Threading.Tasks;
 using Enum;
 using FluentAssertions;
 using Xunit;

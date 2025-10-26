@@ -1,6 +1,5 @@
 ﻿using CoreFtp.Enum;
 using System.IO;
-using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace CoreFtp.Infrastructure.Extensions;

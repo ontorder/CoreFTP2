@@ -1,8 +1,6 @@
-﻿    using System;
+﻿namespace CoreFtp.Enum;
 
-namespace CoreFtp.Enum;
-
-[ Flags ]
+[Flags]
 public enum IpVersion
 {
     IpV4 = 1,

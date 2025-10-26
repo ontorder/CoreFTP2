@@ -1,7 +1,5 @@
 ﻿using CoreFtp.Enum;
 using System.Net;
-using System.Threading;
-using System.Threading.Tasks;
 namespace CoreFtp.Components.DnsResolution;
 
 public interface IDnsResolver

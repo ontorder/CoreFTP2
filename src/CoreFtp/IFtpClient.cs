@@ -1,12 +1,8 @@
-﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 using CoreFtp.Enum;
 using CoreFtp.Infrastructure;
-using Microsoft.Extensions.Logging;
 
 namespace CoreFtp;
 

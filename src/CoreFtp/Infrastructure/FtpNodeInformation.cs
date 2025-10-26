@@ -1,5 +1,4 @@
-﻿using System;
-using CoreFtp.Enum;
+﻿using CoreFtp.Enum;
 
 namespace CoreFtp.Infrastructure;
 

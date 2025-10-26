@@ -1,7 +1,4 @@
-﻿using System;
-using System.Threading.Tasks;
-
-namespace CoreFtp.Infrastructure.Caching;
+﻿namespace CoreFtp.Infrastructure.Caching;
 
 public interface ICache
 {
