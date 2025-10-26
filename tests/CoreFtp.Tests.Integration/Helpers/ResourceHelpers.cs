@@ -1,8 +1,7 @@
-﻿namespace CoreFtp.Tests.Integration.Helpers;
+﻿using System.IO;
 
-using System;
-using System.IO;
-using System.Threading.Tasks;
+namespace CoreFtp.Tests.Integration.Helpers;
+
 using Enum;
 
 public static class ResourceHelpers

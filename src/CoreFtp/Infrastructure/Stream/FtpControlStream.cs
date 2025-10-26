@@ -71,8 +71,9 @@ public sealed partial class FtpControlStream
         }
     }
 
-    public FtpControlStream(FtpClientConfiguration configuration, IDnsResolver dnsResolver)
+    public FtpControlStream(FtpClientConfiguration configuration, IDnsResolver dnsResolver, ILogger? logger)
     {
+        _logger = logger;
         _logger?.LogDebug("[CoreFtp] Constructing new FtpSocketStream");
         _configuration = configuration;
         _dnsResolver = dnsResolver;
@@ -90,24 +91,24 @@ public sealed partial class FtpControlStream
         if (false == await ConnectStreamAsync(_configuration.Host, _configuration.Port, token))
             return;
 
-        if (_configuration.ShouldEncrypt == false)
+        if (false == IsConnected)
             return;
 
-        if (false == IsConnected || IsEncrypted)
-            return;
+        if (_configuration.ShouldEncrypt || IsEncrypted)
+        {
+            if (_configuration.EncryptionType == FtpEncryption.Implicit)
+                await EncryptImplicitly(token);
 
-        if (_configuration.EncryptionType == FtpEncryption.Implicit)
-            await EncryptImplicitly(token);
-
-        if (_configuration.EncryptionType == FtpEncryption.Explicit)
-            await EncryptExplicitly(token);
+            if (_configuration.EncryptionType == FtpEncryption.Explicit)
+                await EncryptExplicitly(token);
+        }
 
         _ = ReadLoopAsync();
 
-        var temp = await _parser.WaitResponseAsync(); // TODO timeout
-        if (temp.Code.IsError())
+        var (Code, _, _) = await _parser.ResponseReader.ReadAsync(token); // TODO timeout
+        if (Code.IsError())
             throw new IOException("Could not connect to the FTP server.");
-        if (temp.Code != CFtpStatusCode.Code220Motd)
+        if (Code != CFtpStatusCode.Code220Motd)
             throw new InvalidOperationException("motd failed");
 
         _logger?.LogDebug("[CoreFTP] motd received");
@@ -156,11 +157,11 @@ public sealed partial class FtpControlStream
 
     public async Task<int?> EpsvAsync(CancellationToken cancellationToken)
     {
-        var resp = await SendAsync(FtpCommand.EPSV, cancellationToken);
-        if (resp.Code != CFtpStatusCode.COde229EnteringExtendedPassive) return null;
+        var (Code, Message, _) = await SendAsync(FtpCommand.EPSV, cancellationToken);
+        if (Code != CFtpStatusCode.COde229EnteringExtendedPassive) return null;
 
         var regex = FtpModelParser.CreateEpsvPortRegex();
-        var match = regex.Match(resp.Message);
+        var match = regex.Match(Message);
         if (match.Success == false) return null;
 
         return int.Parse(match.Groups["PortNumber"].Value);
@@ -171,14 +172,13 @@ public sealed partial class FtpControlStream
 
     public async Task<string[]> GetFeatsAsync(CancellationToken cancellationToken)
     {
-        await SendAsync(FtpCommand.FEAT, cancellationToken);
-        var resp = await _parser.WaitResponseAsync();
-        if (resp.Code.IsError())
+        var (Code, _, AdditionalData) = await SendAsync(FtpCommand.FEAT, cancellationToken);
+        if (Code.IsError())
         {
             _logger?.LogError("[CoreFtp] FEAT command unsuccessful");
             throw new Exception();
         }
-        var features = resp.AdditionalData!.Select(x => x.Trim());
+        var features = AdditionalData!.Select(_ => _.Trim());
         return features.ToArray();
     }
 
@@ -187,7 +187,16 @@ public sealed partial class FtpControlStream
         var resp = await SendAsync(new FtpCommandEnvelope(FtpCommand.MLSD), cancellation);
         if (resp.Code.IsError()) return (false, null);
         var ok = resp.Code is CFtpStatusCode.Code125DataAlreadyOpen or CFtpStatusCode.Code150OpeningData;
-        return (ok, ok ? _parser.WaitResponseAsync() : null);
+        return (ok, ok ? EndAsync(_parser.ResponseReader, cancellation) : null);
+
+        static async Task EndAsync(
+            System.Threading.Channels.ChannelReader<(CFtpStatusCode Code, string Message, string[]? AdditionalData)> responseReader,
+            CancellationToken cancellation)
+        {
+            var (Code, _, _) = await responseReader.ReadAsync(cancellation);
+            if (Code.IsError()) throw new FtpException();
+            if (Code != CFtpStatusCode.Code226ClosingData) throw new FtpException("expected code 226");
+        }
     }
 
     public async Task<(bool, Task?)> ListAsync(DirSort? sortBy, CancellationToken cancellation)
@@ -203,7 +212,16 @@ public sealed partial class FtpControlStream
         var resp = await SendAsync(listCmd, cancellation);
         if (resp.Code.IsError()) return (false, null);
         // ma non devo fare 125/150?
-        return (true, _parser.WaitResponseAsync());
+        return (true, EndAsync(_parser.ResponseReader, cancellation));
+
+        static async Task EndAsync(
+            System.Threading.Channels.ChannelReader<(CFtpStatusCode Code, string Message, string[]? AdditionalData)> responseReader,
+            CancellationToken cancellation)
+        {
+            var (Code, _, _) = await responseReader.ReadAsync(cancellation);
+            if (Code.IsError()) throw new FtpException();
+            if (Code != CFtpStatusCode.Code226ClosingData) throw new FtpException("expected code 226");
+        }
     }
 
     public async Task MkdAsync(string directory, CancellationToken cancellationToken)
@@ -215,9 +233,9 @@ public sealed partial class FtpControlStream
 
     public async Task<int?> PasvAsync(CancellationToken cancellationToken)
     {
-        var resp = await SendAsync(FtpCommand.PASV, cancellationToken);
-        if (resp.Code != CFtpStatusCode.Code227EnteringPassive) return null;
-        return resp.Message.ExtractPasvPortNumber();
+        var (Code, Message, _) = await SendAsync(FtpCommand.PASV, cancellationToken);
+        if (Code != CFtpStatusCode.Code227EnteringPassive) return null;
+        return Message.ExtractPasvPortNumber();
     }
 
     public async Task PbszAsync(CancellationToken cancellationToken)
@@ -234,12 +252,12 @@ public sealed partial class FtpControlStream
 
     public async Task<string?> PwdAsync(CancellationToken cancellationToken)
     {
-        var resp = await SendAsync(FtpCommand.PWD, cancellationToken);
-        if (resp.Code.IsError()) return null;
-        if (resp.Code != CFtpStatusCode.Code257PathnameCreated) return null;
+        var (Code, Message, _) = await SendAsync(FtpCommand.PWD, cancellationToken);
+        if (Code.IsError()) return null;
+        if (Code != CFtpStatusCode.Code257PathnameCreated) return null;
 
         var pwdParser = FtpModelParser.CreatePwdRegex();
-        var parsed = pwdParser.Match(resp.Message);
+        var parsed = pwdParser.Match(Message);
         if (parsed.Success == false) return null;
 
         return parsed.Groups["path"].Value;
@@ -272,20 +290,19 @@ public sealed partial class FtpControlStream
     public async Task RetrAsync(string fileName, CancellationToken cancellationToken)
     {
         var ftpCmd = new FtpCommandEnvelope(FtpCommand.RETR, fileName);
-        var resp = await SendAsync(ftpCmd, cancellationToken);
-        if (resp.Code.IsError()) throw new FtpException();
-        if (resp.Code is not (CFtpStatusCode.Code125DataAlreadyOpen or CFtpStatusCode.Code150OpeningData or CFtpStatusCode.Code226ClosingData))
-            throw new FtpException(resp.Message);
+        var (Code, Message, _) = await SendAsync(ftpCmd, cancellationToken);
+        if (Code.IsError()) throw new FtpException();
+        if (Code is not (CFtpStatusCode.Code125DataAlreadyOpen or CFtpStatusCode.Code150OpeningData or CFtpStatusCode.Code226ClosingData))
+            throw new FtpException(Message);
     }
 
     public async Task<RmdResult> RmdAsync(string directory, CancellationToken cancellationToken)
     {
         var cmd = new FtpCommandEnvelope(FtpCommand.RMD, directory);
-        await SendAsync(cmd, cancellationToken);
-        var resp = await _parser.WaitResponseAsync();
-        if (resp.Code.IsError()) return RmdResult.Error;
+        (var Code, string Message, _) = await SendAsync(cmd, cancellationToken);
+        if (Code.IsError()) return RmdResult.Error;
 
-        switch (resp.Code)
+        switch (Code)
         {
             case CFtpStatusCode.Code200CommandOK:
             case CFtpStatusCode.Code250FileActionOK:
@@ -295,40 +312,40 @@ public sealed partial class FtpControlStream
                 return RmdResult.NotEmpty;
 
             default:
-                throw new FtpException(resp.Message);
+                throw new FtpException(Message);
         }
     }
 
     public async Task<bool> SendOptsAsync(string optsArg, CancellationToken cancellation)
     {
-        var resp = await SendAsync($"OPTS {optsArg}", cancellation);
-        if (resp.Code.IsError()) return false;
+        var (Code, _, _) = await SendAsync($"OPTS {optsArg}", cancellation);
+        if (Code.IsError()) return false;
         // 200 Always in UTF8 mode.
-        return resp.Code == CFtpStatusCode.Code200CommandOK;
+        return Code == CFtpStatusCode.Code200CommandOK;
     }
 
     public async Task<bool> SendPassAsync(string pass, CancellationToken cancellation)
     {
-        var resp = await SendAsync(new FtpCommandEnvelope(FtpCommand.PASS, pass), cancellation);
-        if (resp.Code.IsError()) return false;
-        if (resp.Code != CFtpStatusCode.Code230LoggedInProceed) return false;
+        var (Code, _, _) = await SendAsync(new FtpCommandEnvelope(FtpCommand.PASS, pass), cancellation, "PASS ***");
+        if (Code.IsError()) return false;
+        if (Code != CFtpStatusCode.Code230LoggedInProceed) return false;
         return true;
     }
 
     public async Task<bool> SendUserAsync(string user, CancellationToken cancellation)
     {
-        var resp = await SendAsync(new FtpCommandEnvelope(FtpCommand.USER, user), cancellation);
-        if (resp.Code.IsError()) return false;
-        return resp.Code is CFtpStatusCode.Code331SendPasswordCommand or CFtpStatusCode.Code220Motd or CFtpStatusCode.Code230LoggedInProceed;
+        var (Code, _, _) = await SendAsync(new FtpCommandEnvelope(FtpCommand.USER, user), cancellation);
+        if (Code.IsError()) return false;
+        return Code is CFtpStatusCode.Code331SendPasswordCommand or CFtpStatusCode.Code220Motd or CFtpStatusCode.Code230LoggedInProceed;
     }
 
     public async Task<long> SizeAsync(string fileName, CancellationToken cancellationToken)
     {
         var sizeCmd = new FtpCommandEnvelope(FtpCommand.SIZE, fileName);
-        var resp = await SendAsync(sizeCmd, cancellationToken);
-        if (resp.Code.IsError() || resp.Code != CFtpStatusCode.Code213FileStatus)
-            throw new FtpException(resp.Message);
-        return long.Parse(resp.Message);
+        var (Code, Message, _) = await SendAsync(sizeCmd, cancellationToken);
+        if (Code.IsError() || Code != CFtpStatusCode.Code213FileStatus)
+            throw new FtpException(Message);
+        return long.Parse(Message);
     }
 
     public async Task TypeAsync(FtpTransferMode transferMode, char secondType)
@@ -338,29 +355,37 @@ public sealed partial class FtpControlStream
             secondType != '\0'
                 ? $"{(char)transferMode} {secondType}"
                 : $"{(char)transferMode}");
-        var resp = await SendAsync(typeCmd);
-        if (resp.Code.IsError() || resp.Code != CFtpStatusCode.Code200CommandOK) throw new FtpException(resp.Message);
+        var (Code, Message, _) = await SendAsync(typeCmd);
+        if (Code.IsError() || Code != CFtpStatusCode.Code200CommandOK) throw new FtpException(Message);
     }
 
-    private Task<(CFtpStatusCode Code, string Message, string[]? AdditionalData)> SendAsync(FtpCommand command, CancellationToken token = default)
-        => SendAsync(new FtpCommandEnvelope(command), token);
+    private Task<(CFtpStatusCode Code, string Message, string[]? AdditionalData)> SendAsync(
+        FtpCommand command,
+        CancellationToken token = default,
+        string? forceLog = null)
+        => SendAsync(new FtpCommandEnvelope(command), token, forceLog);
 
-    private Task<(CFtpStatusCode Code, string Message, string[]? AdditionalData)> SendAsync(FtpCommandEnvelope envelope, CancellationToken token = default)
+    private Task<(CFtpStatusCode Code, string Message, string[]? AdditionalData)> SendAsync(
+        FtpCommandEnvelope envelope,
+        CancellationToken token = default,
+        string? forceLog = null)
     {
         string commandString = envelope.GetCommandString();
-        return SendAsync(commandString, token);
+        return SendAsync(commandString, token, forceLog);
     }
 
-    private async Task<(CFtpStatusCode Code, string Message, string[]? AdditionalData)> SendAsync(string command, CancellationToken token = default)
+    private async Task<(CFtpStatusCode Code, string Message, string[]? AdditionalData)> SendAsync(
+        string command,
+        CancellationToken token = default,
+        string? forceLog = null)
     {
         await _sendSemaphore.WaitAsync(token);
 
         try
         {
-            _logger?.LogDebug("[CoreFtp] Sending command: {commandToPrint}", command);
-            var tempResponseTask = _parser.WaitResponseAsync();
+            _logger?.LogDebug("[CoreFtp] Sending command: {commandToPrint}", forceLog ?? command);
             await WriteLineAsync(command, token);
-            return await tempResponseTask;
+            return await _parser.ResponseReader.ReadAsync(token);
         }
         finally
         {
@@ -380,19 +405,19 @@ public sealed partial class FtpControlStream
     public async Task StorAsync(string fileName, CancellationToken cancellationToken)
     {
         var ftpCmd = new FtpCommandEnvelope(FtpCommand.STOR, fileName);
-        var resp = await SendAsync(ftpCmd, cancellationToken);
-        if (resp.Code.IsError()) throw new FtpException();
-        if (resp.Code is not (CFtpStatusCode.Code125DataAlreadyOpen or CFtpStatusCode.Code150OpeningData or CFtpStatusCode.Code226ClosingData))
-            throw new FtpException(resp.Message);
+        var (Code, Message, _) = await SendAsync(ftpCmd, cancellationToken);
+        if (Code.IsError()) throw new FtpException();
+        if (Code is not (CFtpStatusCode.Code125DataAlreadyOpen or CFtpStatusCode.Code150OpeningData or CFtpStatusCode.Code226ClosingData))
+            throw new FtpException(Message);
     }
 
     public async Task WaitEndDataStreamAsync()
     {
-        var resp = await _parser.WaitResponseAsync();
-        if (resp.Code.IsError())
-            throw new FtpException(resp.Message);
-        if (resp.Code != CFtpStatusCode.Code226ClosingData)
-            throw new FtpException(resp.Message);
+        var (Code, Message, _) = await _parser.ResponseReader.ReadAsync();
+        if (Code.IsError())
+            throw new FtpException(Message);
+        if (Code != CFtpStatusCode.Code226ClosingData)
+            throw new FtpException(Message);
     }
 
     private async Task ActivateEncryptionAsync()
@@ -409,7 +434,7 @@ public sealed partial class FtpControlStream
         try
         {
             _sslStream = new SslStream(_ftpStream, true, (sender, certificate, chain, sslPolicyErrors) => OnValidateCertificate(certificate, chain, sslPolicyErrors));
-            await _sslStream.AuthenticateAsClientAsync(_configuration.Host, _configuration.ClientCertificates, _configuration.SslProtocols, true);
+            await _sslStream.AuthenticateAsClientAsync(_configuration.Host, _configuration.ClientCertificates, _configuration.SslProtocols, checkCertificateRevocation: true);
         }
         catch (AuthenticationException authErr)
         {
@@ -463,8 +488,7 @@ public sealed partial class FtpControlStream
     private async Task EncryptExplicitly(CancellationToken token)
     {
         _logger?.LogDebug("[CoreFtp] Encrypting explicitly");
-        await SendAsync("AUTH TLS", token);
-        var response = await _parser.WaitResponseAsync();
+        var response = await SendAsync("AUTH TLS", token);
 
         if (response.Code.IsError())
             throw new InvalidOperationException();
@@ -476,7 +500,7 @@ public sealed partial class FtpControlStream
     {
         _logger?.LogDebug("[CoreFtp] Encrypting implicitly");
         await ActivateEncryptionAsync();
-        var response = await _parser.WaitResponseAsync();
+        var response = await _parser.ResponseReader.ReadAsync(token);
 
         if (response.Code.IsError())
             throw new IOException($"Could not securely connect to host {_configuration.Host}:{_configuration.Port}");
@@ -517,9 +541,8 @@ public sealed partial class FtpControlStream
         await foreach (string controlReponse in ReadLineAsyncEnum(Encoding, CancellationToken.None))
         {
             _lastActivity = DateTime.Now;
-            // potrei usare semaphore
             _logger?.LogDebug("[CoreFtp] {line}", controlReponse);
-            _parser.Parse(controlReponse);
+            await _parser.ParseAndSignalAsync(controlReponse);
         }
     }
 

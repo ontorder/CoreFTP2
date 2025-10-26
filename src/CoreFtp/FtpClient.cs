@@ -7,7 +7,6 @@ using CoreFtp.Infrastructure.Stream;
 using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -29,8 +28,6 @@ public sealed class FtpClient : IFtpClient
     private ICollection<string> _features = Array.Empty<string>();
     private readonly ILogger? _logger;
 
-    private enum DirectoryProviderType { MLSD, LIST, Uninitialized }
-
     public FtpClient(FtpClientConfiguration configuration, ILogger logger)
     {
         Configuration = configuration;
@@ -44,7 +41,7 @@ public sealed class FtpClient : IFtpClient
             configuration.Host = new Uri(configuration.Host).Host;
         }
 
-        _controlStream = new FtpControlStream(Configuration, new DnsResolver());
+        _controlStream = new FtpControlStream(Configuration, new DnsResolver(), _logger);
         Configuration.BaseDirectory = $"/{Configuration.BaseDirectory.TrimStart('/')}";
     }
 
@@ -572,6 +569,8 @@ public sealed class FtpClient : IFtpClient
             DirectoryProviderType.LIST => await _controlStream.ListAsync(sortBy, cancellation),
             _ => throw new InvalidOperationException("Directory provider type not initialized"),
         };
+
+    private enum DirectoryProviderType { MLSD = 1, LIST = 2, Uninitialized = 0 }
 }
 
 file static class FtpClientFeaturesExtensions
