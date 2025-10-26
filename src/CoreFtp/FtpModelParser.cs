@@ -11,10 +11,9 @@ public partial class FtpModelParser
     public ChannelReader<(CFtpStatusCode Code, string Message, string[]? AdditionalData)> ResponseReader => _responseChannel.Reader;
 
     private CFtpStatusCode? _messageParsingState = null;
+    private readonly Channel<(CFtpStatusCode Code, string Message, string[]? AdditionalData)> _responseChannel = Channel.CreateUnbounded<(CFtpStatusCode Code, string Message, string[]? AdditionalData)>();
     private static readonly Regex _stdParser = CreateStdStatusRegex();
     private readonly List<string> _tempAdditionalData = new();
-    private readonly Channel<(CFtpStatusCode Code, string Message, string[]? AdditionalData)> _responseChannel = Channel.CreateUnbounded<(CFtpStatusCode Code, string Message, string[]? AdditionalData)>();
-    //private TaskCompletionSource<(CFtpStatusCode Code, string Message, string[]? AdditionalData)> _waitResponse = new();
 
     public async Task ParseAndSignalAsync(string ftpLine)
     {
@@ -54,7 +53,7 @@ public partial class FtpModelParser
 
             case CFtpStatusCode.Code211Feats:
                 _tempAdditionalData.Add(ftpLine);
-                if (parsed.IsMultiline == false)
+                if (parsed.FtpStatusCode == CFtpStatusCode.Code211Feats && parsed.IsMultiline == false)
                 {
                     _messageParsingState = null;
                     await _responseChannel.Writer.WriteAsync((CFtpStatusCode.Code211Feats, string.Empty, _tempAdditionalData.ToArray()));
@@ -78,7 +77,7 @@ public partial class FtpModelParser
         return (ftpStatusCode, isMultiline, responseMessage);
     }
 
-    [GeneratedRegex("^(?<statusCode>[0-9]{3}) \"(?<path>.*)\".*$", RegexOptions.Compiled)]
+    [GeneratedRegex("^\"(?<path>.*)\".*$", RegexOptions.Compiled)]
     public static partial Regex CreatePwdRegex();
 
     [GeneratedRegex("^(?<statusCode>[0-9]{3})(?<isMultiline>.)(?<message>.*)$", RegexOptions.Compiled)]

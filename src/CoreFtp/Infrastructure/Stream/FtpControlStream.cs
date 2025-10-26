@@ -541,7 +541,7 @@ public sealed partial class FtpControlStream
         await foreach (string controlReponse in ReadLineAsyncEnum(Encoding, CancellationToken.None))
         {
             _lastActivity = DateTime.Now;
-            _logger?.LogDebug("[CoreFtp] {line}", controlReponse);
+            _logger?.LogDebug("[CoreFtp] data: {line}", controlReponse);
             await _parser.ParseAndSignalAsync(controlReponse);
         }
     }

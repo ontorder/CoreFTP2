@@ -16,17 +16,29 @@ public sealed class FtpTextDataStream
     private readonly FtpClientConfiguration _configuration;
     private readonly NetworkStream _ftpStream;
     private readonly ILogger? _logger;
+    private readonly Socket _originalSocket;
     private SslStream? _sslStream;
 
-    public FtpTextDataStream(FtpClientConfiguration configuration, NetworkStream ftpStream, ILogger? logger)
+    public FtpTextDataStream(
+        FtpClientConfiguration configuration,
+        ILogger? logger,
+        NetworkStream ftpStream,
+        Socket originalSocket)
     {
         _configuration = configuration;
         _ftpStream = ftpStream;
         _logger = logger;
+        _originalSocket = originalSocket;
     }
 
-    public void Close()
+    public async Task CloseAsync()
     {
+        while (_originalSocket.Available > 0)
+        {
+            // TEST
+            await Task.Delay(1);
+        }
+
         _ftpStream.Close();
         _sslStream?.Close();
         _ftpStream.Dispose();

@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text;
 
@@ -64,7 +65,7 @@ public sealed class FtpClient : IFtpClient
 
         var pwd = await _controlStream.PwdAsync(cancellationToken);
         if (pwd == null)
-            _logger?.LogWarning("[CoreFtp] pwd response was not 257");
+            _logger?.LogWarning("[CoreFtp] pwd failed");
 
         WorkingDirectory = pwd;
     }
@@ -188,7 +189,7 @@ public sealed class FtpClient : IFtpClient
         static async Task WaitDataEndAsync(FtpTextDataStream dataStream, Task endDataStreamAsync)
         {
             await endDataStreamAsync;
-            dataStream.Close();
+            await dataStream.CloseAsync();
         }
     }
 
@@ -224,7 +225,7 @@ public sealed class FtpClient : IFtpClient
         static async Task WaitDataEndAsync(FtpTextDataStream dataStream, Task endDataStreamAsync)
         {
             await endDataStreamAsync;
-            dataStream.Close();
+            await dataStream.CloseAsync();
         }
     }
 
@@ -259,7 +260,7 @@ public sealed class FtpClient : IFtpClient
         static async Task WaitDataEndAsync(FtpTextDataStream dataStream, Task endDataStreamAsync)
         {
             await endDataStreamAsync;
-            dataStream.Close();
+            await dataStream.CloseAsync();
         }
     }
 
@@ -554,10 +555,26 @@ public sealed class FtpClient : IFtpClient
             _ => throw new InvalidOperationException("Directory provider type not initialized"),
         };
 
-    public async Task<FtpTextDataStream> OpenDataStreamAsync(string host, int port, CancellationToken token)
+    public async Task<FtpTextDataStream?> OpenDataStreamAsync(string host, int port, CancellationToken token)
     {
         _logger?.LogDebug("[CoreFtp] FtpSocketStream: Opening datastream");
-        var socketStream = new FtpTextDataStream(Configuration, null, _logger); // UNDONE
+
+        // TODO refactor, ora son troppo stanco
+        var ipEndpoint = await new DnsResolver().ResolveAsync(host, port, IpVersion.IpV4, token);
+        if (ipEndpoint == null)
+        {
+            _logger?.LogWarning("[CoreFtp] WARNING endpoint was null for {host}:{port}", host, port);
+            return null;
+        }
+        var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp)
+        {
+            ReceiveTimeout = Configuration.TimeoutSeconds * 1000
+        };
+        await socket.ConnectAsync(ipEndpoint);
+        socket.LingerState = new LingerOption(true, 0);
+
+        var ftpStream = new NetworkStream(socket);
+        var socketStream = new FtpTextDataStream(Configuration, _logger, ftpStream, socket);
         await socketStream.TryActivateEncryptionAsync();
         return socketStream;
     }

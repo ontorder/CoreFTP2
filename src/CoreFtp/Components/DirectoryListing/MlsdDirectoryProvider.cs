@@ -87,9 +87,9 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
                 _ => throw new Exception(),
             };
         }
-        catch (Exception initErr)
+        catch (Exception readErr)
         {
-            Logger?.LogError(initErr, "[CoreFtp] list nodes async enum EXCEPTION");
+            Logger?.LogError(readErr, "[CoreFtp] list nodes async enum EXCEPTION");
             yield break;
         }
 
