@@ -2,8 +2,6 @@
 using System;
 using System.Threading.Tasks;
 
-#nullable enable
-
 namespace CoreFtp.Infrastructure.Caching;
 
 public sealed class InMemoryCache : ICache

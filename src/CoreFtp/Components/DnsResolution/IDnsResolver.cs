@@ -2,7 +2,6 @@
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-#nullable enable
 namespace CoreFtp.Components.DnsResolution;
 
 public interface IDnsResolver

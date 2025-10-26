@@ -11,8 +11,6 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-#nullable enable
-
 namespace CoreFtp.Components.DirectoryListing;
 
 internal sealed class MlsdDirectoryProvider : DirectoryProviderBase

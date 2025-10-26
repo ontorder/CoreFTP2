@@ -16,8 +16,6 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
-#nullable enable
-
 namespace CoreFtp.Infrastructure.Stream;
 
 public sealed partial class FtpControlStream

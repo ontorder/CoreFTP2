@@ -1,6 +1,4 @@
-﻿#nullable enable
-
-namespace CoreFtp.Components.DirectoryListing.Parser;
+﻿namespace CoreFtp.Components.DirectoryListing.Parser;
 
 using Infrastructure;
 

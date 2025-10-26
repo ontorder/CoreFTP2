@@ -11,8 +11,6 @@ using System.Threading.Tasks;
 
 namespace CoreFtp.Components.DirectoryListing;
 
-#nullable enable
-
 public abstract class DirectoryProviderBase : IDirectoryProvider
 {
     protected Infrastructure.Stream.FtpControlStream FtpStream;

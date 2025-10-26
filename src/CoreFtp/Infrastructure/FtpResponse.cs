@@ -1,7 +1,5 @@
 ﻿namespace CoreFtp.Infrastructure;
 
-#nullable enable
-
 using Enum;
 
 public sealed class FtpResponse

@@ -16,6 +16,7 @@
     <Authors />
     <Description />
     <IncludeBuildOutput>false</IncludeBuildOutput>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>

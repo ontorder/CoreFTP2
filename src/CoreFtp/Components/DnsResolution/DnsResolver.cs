@@ -6,7 +6,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
-#nullable enable
+
 namespace CoreFtp.Components.DnsResolution;
 
 public sealed class DnsResolver : IDnsResolver

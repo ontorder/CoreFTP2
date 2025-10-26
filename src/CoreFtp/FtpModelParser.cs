@@ -1,6 +1,4 @@
-﻿#nullable enable
-
-using CoreFtp.Enum;
+﻿using CoreFtp.Enum;
 using CoreFtp.Infrastructure.Extensions;
 using System;
 using System.Collections.Generic;
