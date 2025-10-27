@@ -26,6 +26,7 @@ public sealed partial class FtpControlStream
     private DateTime _lastActivity = DateTime.Now;
     private readonly ILogger? _logger;
     private readonly FtpModelParser _parser = new();
+    private CancellationTokenSource _readerCancellation = new();
     private readonly SemaphoreSlim _sendSemaphore = new(1, 1);
     private SslStream? _sslStream;
 
@@ -103,6 +104,7 @@ public sealed partial class FtpControlStream
                 await EncryptExplicitly(token);
         }
 
+        _readerCancellation = new();
         _ = ReadLoopAsync();
 
         var (Code, _, _) = await _parser.ResponseReader.ReadAsync(token); // TODO timeout
@@ -134,6 +136,7 @@ public sealed partial class FtpControlStream
         _logger?.LogTrace("[CoreFtp] Disconnecting");
         try
         {
+            _readerCancellation.Cancel();
             _ftpStream?.Dispose();
             _sslStream?.Dispose();
             _ftpSocket?.Shutdown(SocketShutdown.Both);
@@ -211,7 +214,7 @@ public sealed partial class FtpControlStream
         var listCmd = new FtpCommandEnvelope(FtpCommand.LIST, arguments);
         var resp = await SendAsync(listCmd, cancellation);
         if (resp.Code.IsError()) return (false, null);
-        // ma non devo fare 125/150?
+        // TODO ma non devo fare 125/150?
         return (true, EndAsync(_parser.ResponseReader, cancellation));
 
         static async Task EndAsync(
@@ -509,8 +512,6 @@ public sealed partial class FtpControlStream
     private bool OnValidateCertificate(X509Certificate _, X509Chain __, SslPolicyErrors errors)
         => _configuration.IgnoreCertificateErrors || errors == SslPolicyErrors.None;
 
-    // TODO use Pipe o channel
-    // https://learn.microsoft.com/en-us/dotnet/standard/io/pipelines
     private async IAsyncEnumerable<string> ReadLineAsyncEnum(Encoding encoding, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         const int MaxReadSize = 512;
@@ -535,14 +536,13 @@ public sealed partial class FtpControlStream
         while (count > 0);
     }
 
-    // TODO stop
     private async Task ReadLoopAsync()
     {
-        await foreach (string controlReponse in ReadLineAsyncEnum(Encoding, CancellationToken.None))
+        await foreach (string controlReponse in ReadLineAsyncEnum(Encoding, _readerCancellation.Token))
         {
             _lastActivity = DateTime.Now;
             _logger?.LogDebug("[CoreFtp] data: {line}", controlReponse);
-            await _parser.ParseAndSignalAsync(controlReponse);
+            await _parser.ParseAndSignalAsync(controlReponse, _readerCancellation.Token);
         }
     }
 

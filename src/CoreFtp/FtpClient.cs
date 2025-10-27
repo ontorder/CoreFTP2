@@ -352,9 +352,9 @@ public sealed class FtpClient : IFtpClient
     public async Task<Stream> OpenFileReadStreamAsync(string fileName, CancellationToken cancellationToken)
     {
         _logger?.LogDebug("[CoreFtp] Opening file read stream for {fileName}", fileName);
+        var dataStream = await ConnectDataStreamAsync(cancellationToken);
         await _controlStream.RetrAsync(fileName, cancellationToken);
         _logger?.LogDebug("[CoreFtp] Opening filestream for storing {fileName}", fileName);
-        var dataStream = await ConnectDataStreamAsync(cancellationToken);
         return dataStream.GetStream();
     }
 

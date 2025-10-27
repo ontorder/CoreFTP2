@@ -45,7 +45,7 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
         {
             if (node.IsNullOrWhiteSpace()) continue;
             if (ftpNodeType == null || false == node.Contains($"type={nodeTypeString}")) continue;
-            nodes.Add(node.ToFtpNode());
+            nodes.Add(FtpModelParser.ParseFtpNode(node));
         }
 
         return nodes.AsReadOnly();
@@ -75,7 +75,7 @@ internal sealed class MlsdDirectoryProvider : DirectoryProviderBase
             {
                 if (line.IsNullOrWhiteSpace()) continue;
                 if (ftpNodeType.HasValue && !line.Contains($"type={nodeTypeString}")) continue;
-                nodes.Add(line.ToFtpNode());
+                nodes.Add(FtpModelParser.ParseFtpNode(line));
             }
 
             sortedNodes = sortBy switch

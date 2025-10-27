@@ -19,6 +19,9 @@ public sealed class FtpTextDataStream
     private readonly Socket _originalSocket;
     private SslStream? _sslStream;
 
+    private TaskCompletionSource? _bugMaybeReadToEndTask = null;
+    private bool _closing = false;
+
     public FtpTextDataStream(
         FtpClientConfiguration configuration,
         ILogger? logger,
@@ -33,11 +36,8 @@ public sealed class FtpTextDataStream
 
     public async Task CloseAsync()
     {
-        while (_originalSocket.Available > 0)
-        {
-            // TEST
-            await Task.Delay(1);
-        }
+        _closing = true;
+        if (_bugMaybeReadToEndTask != null) await _bugMaybeReadToEndTask.Task;
 
         _ftpStream.Close();
         _sslStream?.Close();
@@ -50,22 +50,44 @@ public sealed class FtpTextDataStream
     public async IAsyncEnumerable<string> ReadLineAsyncEnum([EnumeratorCancellation] CancellationToken cancellationToken)
     {
         const int MaxReadSize = 512;
+        const int TempTimeout = 100; // ms
 
         var data = new ArrayBufferWriter<byte>();
         PartialSplitStatus split_status = new();
-        int count;
+        int count = 0;
         var stream = GetStream();
+        _bugMaybeReadToEndTask = new();
+        var readTimeout = TimeSpan.FromMilliseconds(TempTimeout);
 
         do
         {
             var buf = new byte[MaxReadSize];
-            count = await stream.ReadAsync(buf, cancellationToken);
-            if (count == 0) break;
+            var cts = new CancellationTokenSource(readTimeout);
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, cancellationToken);
+            try
+            {
+                count = await stream.ReadAsync(buf, linkedCts.Token);
+                if (count == 0)
+                {
+                    _bugMaybeReadToEndTask.SetResult();
+                    break;
+                }
+            }
+            catch (TimeoutException)
+            {
+                if (_closing)
+                {
+                    _bugMaybeReadToEndTask.SetResult();
+                    break;
+                }
+                continue;
+            }
+
             data.Write(buf.AsSpan()[..count]);
             foreach (string line in SplitEncodePartial(data.WrittenSpan, split_status))
                 yield return line;
         }
-        while (count > 0);
+        while (count > 0 || _closing);
     }
 
     public async Task TryActivateEncryptionAsync()
