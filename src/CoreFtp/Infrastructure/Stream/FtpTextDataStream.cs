@@ -13,25 +13,21 @@ namespace CoreFtp.Infrastructure.Stream;
 
 public sealed class FtpTextDataStream
 {
+    private TaskCompletionSource? _bugMaybeReadToEndTask = null;
+    private bool _closing = false;
     private readonly FtpClientConfiguration _configuration;
     private readonly NetworkStream _ftpStream;
     private readonly ILogger? _logger;
-    private readonly Socket _originalSocket;
     private SslStream? _sslStream;
-
-    private TaskCompletionSource? _bugMaybeReadToEndTask = null;
-    private bool _closing = false;
 
     public FtpTextDataStream(
         FtpClientConfiguration configuration,
         ILogger? logger,
-        NetworkStream ftpStream,
-        Socket originalSocket)
+        NetworkStream ftpStream)
     {
         _configuration = configuration;
         _ftpStream = ftpStream;
         _logger = logger;
-        _originalSocket = originalSocket;
     }
 
     public async Task CloseAsync()
@@ -53,7 +49,7 @@ public sealed class FtpTextDataStream
         const int TempTimeout = 100; // ms
 
         var data = new ArrayBufferWriter<byte>();
-        PartialSplitStatus split_status = new();
+        PartialSplitStatus splitStatus = new();
         int count = 0;
         var stream = GetStream();
         _bugMaybeReadToEndTask = new();
@@ -82,9 +78,17 @@ public sealed class FtpTextDataStream
                 }
                 continue;
             }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception)
+            {
+                break;
+            }
 
             data.Write(buf.AsSpan()[..count]);
-            foreach (string line in SplitEncodePartial(data.WrittenSpan, split_status))
+            foreach (string line in SplitEncodePartial(data.WrittenSpan, splitStatus))
                 yield return line;
         }
         while (count > 0 || _closing);

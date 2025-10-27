@@ -574,7 +574,7 @@ public sealed class FtpClient : IFtpClient
         socket.LingerState = new LingerOption(true, 0);
 
         var ftpStream = new NetworkStream(socket);
-        var socketStream = new FtpTextDataStream(Configuration, _logger, ftpStream, socket);
+        var socketStream = new FtpTextDataStream(Configuration, _logger, ftpStream);
         await socketStream.TryActivateEncryptionAsync();
         return socketStream;
     }
