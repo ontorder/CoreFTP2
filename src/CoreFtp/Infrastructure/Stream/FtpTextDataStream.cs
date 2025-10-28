@@ -82,8 +82,9 @@ public sealed class FtpTextDataStream
             {
                 break;
             }
-            catch (Exception)
+            catch (Exception readErr)
             {
+                _logger?.LogError(readErr, "[CoreFtp] EXCEPTION reading from FTP data stream");
                 break;
             }
 
