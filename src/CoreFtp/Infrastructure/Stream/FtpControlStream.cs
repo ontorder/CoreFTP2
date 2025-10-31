@@ -512,7 +512,7 @@ public sealed partial class FtpControlStream
     private bool OnValidateCertificate(X509Certificate _, X509Chain __, SslPolicyErrors errors)
         => _configuration.IgnoreCertificateErrors || errors == SslPolicyErrors.None;
 
-    private async IAsyncEnumerable<string> ReadLineAsyncEnum(Encoding encoding, [EnumeratorCancellation] CancellationToken cancellationToken)
+    private async IAsyncEnumerable<string?> ReadLineAsyncEnum(Encoding encoding, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         const int MaxReadSize = 512;
 
@@ -528,7 +528,11 @@ public sealed partial class FtpControlStream
         {
             var buf = new byte[MaxReadSize];
             count = await stream.ReadAsync(buf, cancellationToken);
-            if (count == 0) break;
+            if (count == 0)
+            {
+                yield return null;
+                break;
+            }
             data.Write(buf.AsSpan()[..count]);
             foreach (string line in SplitEncodePartial(data.WrittenSpan, encoding, split_status))
                 yield return line;
@@ -538,7 +542,7 @@ public sealed partial class FtpControlStream
 
     private async Task ReadLoopAsync()
     {
-        await foreach (string controlReponse in ReadLineAsyncEnum(Encoding, _readerCancellation.Token))
+        await foreach (var controlReponse in ReadLineAsyncEnum(Encoding, _readerCancellation.Token))
         {
             _lastActivity = DateTime.Now;
             _logger?.LogDebug("[CoreFtp] data: {line}", controlReponse);

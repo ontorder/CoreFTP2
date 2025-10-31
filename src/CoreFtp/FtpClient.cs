@@ -189,7 +189,7 @@ public sealed class FtpClient : IFtpClient
         static async Task WaitDataEndAsync(FtpTextDataStream dataStream, Task endDataStreamAsync)
         {
             await endDataStreamAsync;
-            await dataStream.CloseAsync();
+            await dataStream.CloseWaitEndAsync();
         }
     }
 
@@ -221,12 +221,6 @@ public sealed class FtpClient : IFtpClient
         {
             _dataSocketSemaphore.Release();
         }
-
-        static async Task WaitDataEndAsync(FtpTextDataStream dataStream, Task endDataStreamAsync)
-        {
-            await endDataStreamAsync;
-            await dataStream.CloseAsync();
-        }
     }
 
     public async IAsyncEnumerable<FtpNodeInformation> ListFilesAsyncEnum(
@@ -256,12 +250,12 @@ public sealed class FtpClient : IFtpClient
         {
             _dataSocketSemaphore.Release();
         }
+    }
 
-        static async Task WaitDataEndAsync(FtpTextDataStream dataStream, Task endDataStreamAsync)
-        {
-            await endDataStreamAsync;
-            await dataStream.CloseAsync();
-        }
+    private static async Task WaitDataEndAsync(FtpTextDataStream dataStream, Task waitCode226Async)
+    {
+        await waitCode226Async;
+        await dataStream.CloseWaitEndAsync();
     }
 
     /// <summary>
@@ -277,7 +271,15 @@ public sealed class FtpClient : IFtpClient
             await _dataSocketSemaphore.WaitAsync(cancellationToken);
             var dataStream = await ConnectDataStreamAsync(cancellationToken);
             var dp = InitDirectoryProvider(dataStream);
-            return await dp.ListDirectoriesAsync(cancellationToken);
+            var start = await StartDirectoryEnumAsync(null, cancellationToken);
+            if (start.Ok == false)
+            {
+                throw new Exception();
+            }
+            var endTask = WaitDataEndAsync(dataStream, start.WaitEndAsync!);
+            var enumerated = await dp.ListDirectoriesAsync(cancellationToken);
+            await endTask;
+            return enumerated;
         }
         finally
         {

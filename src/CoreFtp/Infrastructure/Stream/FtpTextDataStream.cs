@@ -13,12 +13,11 @@ namespace CoreFtp.Infrastructure.Stream;
 
 public sealed class FtpTextDataStream
 {
-    private TaskCompletionSource? _bugMaybeReadToEndTask = null;
-    private bool _closing = false;
     private readonly FtpClientConfiguration _configuration;
     private readonly NetworkStream _ftpStream;
     private readonly ILogger? _logger;
     private SslStream? _sslStream;
+    private readonly TaskCompletionSource _taskWaitEndStream = new();
 
     public FtpTextDataStream(
         FtpClientConfiguration configuration,
@@ -30,10 +29,9 @@ public sealed class FtpTextDataStream
         _logger = logger;
     }
 
-    public async Task CloseAsync()
+    public async Task CloseWaitEndAsync()
     {
-        _closing = true;
-        if (_bugMaybeReadToEndTask != null) await _bugMaybeReadToEndTask.Task;
+        if (_taskWaitEndStream.Task.IsCompleted == false) await _taskWaitEndStream.Task;
 
         _ftpStream.Close();
         _sslStream?.Close();
@@ -45,54 +43,46 @@ public sealed class FtpTextDataStream
 
     public async IAsyncEnumerable<string> ReadLineAsyncEnum([EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        const int MaxReadSize = 512;
-        const int TempTimeout = 100; // ms
+        const int MaxReadSize = 2048;
 
         var data = new ArrayBufferWriter<byte>();
         PartialSplitStatus splitStatus = new();
-        int count = 0;
+        int countRead = 0;
         var stream = GetStream();
-        _bugMaybeReadToEndTask = new();
-        var readTimeout = TimeSpan.FromMilliseconds(TempTimeout);
 
         do
         {
             var buf = new byte[MaxReadSize];
-            var cts = new CancellationTokenSource(readTimeout);
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, cancellationToken);
             try
             {
-                count = await stream.ReadAsync(buf, linkedCts.Token);
-                if (count == 0)
+                countRead = await stream.ReadAsync(buf, cancellationToken);
+                if (countRead == 0)
                 {
-                    _bugMaybeReadToEndTask.SetResult();
+                    _taskWaitEndStream.SetResult();
                     break;
                 }
             }
             catch (TimeoutException)
             {
-                if (_closing)
-                {
-                    _bugMaybeReadToEndTask.SetResult();
-                    break;
-                }
-                continue;
+                _taskWaitEndStream.SetResult();
             }
             catch (OperationCanceledException)
             {
+                _taskWaitEndStream.SetResult();
                 break;
             }
             catch (Exception readErr)
             {
+                _taskWaitEndStream.SetResult();
                 _logger?.LogError(readErr, "[CoreFtp] EXCEPTION reading from FTP data stream");
                 break;
             }
 
-            data.Write(buf.AsSpan()[..count]);
+            data.Write(buf.AsSpan()[..countRead]);
             foreach (string line in SplitEncodePartial(data.WrittenSpan, splitStatus))
                 yield return line;
         }
-        while (count > 0 || _closing);
+        while (countRead > 0);
     }
 
     public async Task TryActivateEncryptionAsync()

@@ -17,8 +17,14 @@ public partial class FtpModelParser
     private static readonly Regex _stdParser = CreateStdStatusRegex();
     private readonly List<string> _tempAdditionalData = new();
 
-    public async Task ParseAndSignalAsync(string ftpLine, CancellationToken cancellation)
+    public async Task ParseAndSignalAsync(string? ftpLine, CancellationToken cancellation)
     {
+        if (ftpLine == null)
+        {
+            _responseChannel.Writer.Complete();
+            return;
+        }
+
         var parsed = ParseFtpLine(ftpLine);
 
         switch (_messageParsingState)

@@ -4,17 +4,24 @@ using Microsoft.Extensions.Logging;
 
 Console.WriteLine("Ftp test");
 
-var cfg = new FtpClientConfiguration { Host = "ftp.serenissima.tv", Password = "garavot", Username = "garavot" };
-//var cfg = new FtpClientConfiguration { Host = "192.168.2.230", Password = "AC==!2013", Username = "ac001bu", TimeoutSeconds = 5 };
-//var cfg = new FtpClientConfiguration { Host = "ftp.streamcloud.it", Password = "AC==!2013", Username = "ac001bu", TimeoutSeconds = 5 };
-//var cfg = new FtpClientConfiguration { Host = "127.0.0.1", Port = 2021, Password = "p", Username = "u", TimeoutSeconds = 5 };
+var cfg = new FtpClientConfiguration { Host = "127.0.0.1", Port = 2021, Password = "p", Username = "u", TimeoutSeconds = 5 };
 var ftp = new FtpClient(cfg, new DebugLogger());
 try
 {
     await ftp.LoginAsync(default);
-
+    int count = 0;
     await foreach (var ftpFile in ftp.ListFilesAsyncEnum(DirSort.ModifiedTimestampReverse, default))
-        Console.WriteLine($"{ftpFile.DateModified} - {ftpFile.Name}");
+    {
+        Console.Write('*');
+        //Console.WriteLine($"{ftpFile.DateModified} - {ftpFile.Name}");
+        //await Task.Delay(1);
+        ++count;
+    }
+    Console.WriteLine($"count {count}");
+
+    //var d = await ftp.OpenFileReadStreamAsync("HD NOTIZIE OGGI - REGIA TG HD_20251026045942.xml", default);
+    //using var reader = new System.IO.StreamReader(d);
+    //var bla = await reader.ReadToEndAsync();
 }
 catch (Exception generalErr)
 {
